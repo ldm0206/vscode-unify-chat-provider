@@ -14,15 +14,16 @@ import {
   addProviderFromWellKnownList,
   exportAllProviders,
   importProviders,
+  manageBalances,
   manageProviders,
   removeProvider,
 } from './ui';
 import { officialModelsManager } from './official-models-manager';
 import { registerUriHandler, type EventedUriHandler } from './uri-handler';
 import { t } from './i18n';
-import {
-  AuthManager,
-} from './auth';
+import { AuthManager } from './auth';
+import { balanceManager } from './balance';
+import { registerBalanceStatusBar } from './ui/balance-status-bar';
 
 const VENDOR_ID = 'unify-chat-provider';
 const CONFIG_NAMESPACE = 'unifyChatProvider';
@@ -35,13 +36,10 @@ export async function activate(
 ): Promise<void> {
   const configStore = new ConfigStore();
   const secretStore = new SecretStore(context.secrets);
+  registerIgnoredScopeConfigurationWarning(context, configStore);
 
   // Register URI handler (import-config + OAuth callbacks)
-  const uriHandler = registerUriHandler(
-    context,
-    configStore,
-    secretStore,
-  );
+  const uriHandler = registerUriHandler(context, configStore, secretStore);
 
   // Initialize auth system
   const authManager = new AuthManager(configStore, secretStore, uriHandler);
@@ -50,8 +48,20 @@ export async function activate(
   await migrateProviderTypes(configStore);
   await migrateApiKeyToAuth(configStore);
 
-  const chatProvider = new UnifyChatService(configStore, secretStore, authManager);
+  await balanceManager.initialize({
+    configStore,
+    secretStore,
+    authManager,
+    extensionContext: context,
+  });
+  context.subscriptions.push(balanceManager);
 
+  const chatProvider = new UnifyChatService(
+    configStore,
+    secretStore,
+    authManager,
+    balanceManager,
+  );
 
   // Initialize official models manager
   await officialModelsManager.initialize(context, secretStore, authManager);
@@ -71,6 +81,10 @@ export async function activate(
   // Register commands
   registerCommands(context, configStore, secretStore, uriHandler);
 
+  context.subscriptions.push(
+    registerBalanceStatusBar({ context, store: configStore }),
+  );
+
   registerSecretStorageMaintenance(context, configStore, secretStore);
   runSecretStorageMaintenanceOnStartup(configStore, secretStore);
 
@@ -87,6 +101,13 @@ export async function activate(
   // Re-register provider when official models are updated
   context.subscriptions.push(
     officialModelsManager.onDidUpdate(() => {
+      chatProvider.handleConfigurationChange();
+    }),
+  );
+
+  // Re-register provider when balance states are updated
+  context.subscriptions.push(
+    balanceManager.onDidUpdate(() => {
       chatProvider.handleConfigurationChange();
     }),
   );
@@ -130,6 +151,9 @@ export function registerCommands(
     vscode.commands.registerCommand('unifyChatProvider.manageProviders', () =>
       manageProviders(configStore, secretStore, uriHandler),
     ),
+    vscode.commands.registerCommand('unifyChatProvider.manageBalances', () =>
+      manageBalances(configStore, secretStore, uriHandler),
+    ),
     vscode.commands.registerCommand(
       'unifyChatProvider.refreshAllProvidersOfficialModels',
       async () => {
@@ -155,6 +179,37 @@ export function registerCommands(
         );
         vscode.window.showInformationMessage(
           t('Refreshed official models for {0} provider(s).', enabledCount),
+        );
+      },
+    ),
+    vscode.commands.registerCommand(
+      'unifyChatProvider.refreshAllProvidersBalance',
+      async () => {
+        const providers = configStore.endpoints;
+        const enabledCount = providers.filter(
+          (p) => p.balanceProvider && p.balanceProvider.method !== 'none',
+        ).length;
+
+        if (enabledCount === 0) {
+          vscode.window.showInformationMessage(
+            t('No providers have balance monitoring configured.'),
+          );
+          return;
+        }
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: t('Refreshing provider balances...'),
+            cancellable: false,
+          },
+          async () => {
+            await balanceManager.forceRefreshAll();
+          },
+        );
+
+        vscode.window.showInformationMessage(
+          t('Refreshed balances for {0} provider(s).', enabledCount),
         );
       },
     ),
@@ -190,6 +245,7 @@ function registerSecretStorageMaintenance(
   configStore: ConfigStore,
   secretStore: SecretStore,
 ): void {
+  let lastGlobalStoreApiKeyInSettings = configStore.storeApiKeyInSettings;
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (
@@ -197,11 +253,17 @@ function registerSecretStorageMaintenance(
       ) {
         return;
       }
+      const nextGlobalStoreApiKeyInSettings = configStore.storeApiKeyInSettings;
+      if (nextGlobalStoreApiKeyInSettings === lastGlobalStoreApiKeyInSettings) {
+        return;
+      }
+      lastGlobalStoreApiKeyInSettings = nextGlobalStoreApiKeyInSettings;
+
       enqueueMaintenance(async () => {
         await migrateApiKeyStorage({
           configStore,
           secretStore,
-          storeApiKeyInSettings: configStore.storeApiKeyInSettings,
+          storeApiKeyInSettings: nextGlobalStoreApiKeyInSettings,
           showProgress: true,
         });
         await cleanupUnusedSecrets(secretStore);
@@ -223,4 +285,47 @@ function runSecretStorageMaintenanceOnStartup(
     });
     await cleanupUnusedSecrets(secretStore);
   });
+}
+
+function registerIgnoredScopeConfigurationWarning(
+  context: vscode.ExtensionContext,
+  configStore: ConfigStore,
+): void {
+  let hasWarnedThisSession = false;
+
+  const notifyIfNeeded = (): void => {
+    if (hasWarnedThisSession) {
+      return;
+    }
+
+    const ignoredKeys = configStore.getIgnoredNonGlobalKeys().sort();
+    if (ignoredKeys.length === 0) {
+      return;
+    }
+    hasWarnedThisSession = true;
+
+    const openUserSettingsAction = t('Open User Settings');
+    const message = t(
+      'Detected workspace-scoped settings for Unify Chat Provider ({0}). They are ignored and related credentials may be removed automatically. Please move them to user settings (global), then re-enter API keys or re-authorize OAuth if prompted.',
+      ignoredKeys.map((key) => `${CONFIG_NAMESPACE}.${key}`).join(', '),
+    );
+
+    void vscode.window
+      .showWarningMessage(message, openUserSettingsAction)
+      .then((selection) => {
+        if (selection === openUserSettingsAction) {
+          void vscode.commands.executeCommand('workbench.action.openSettingsJson');
+        }
+      });
+  };
+
+  notifyIfNeeded();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration(CONFIG_NAMESPACE)) {
+        return;
+      }
+      notifyIfNeeded();
+    }),
+  );
 }

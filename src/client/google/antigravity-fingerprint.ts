@@ -1,41 +1,17 @@
 import * as crypto from 'node:crypto';
+import { getAntigravityVersion } from '../../auth/providers/antigravity-oauth/version';
 
-const OS_VERSIONS: Record<'darwin' | 'win32' | 'linux', readonly string[]> = {
-  darwin: ['10.15.7', '11.6.8', '12.6.3', '13.5.2', '14.2.1', '14.5'],
-  win32: [
-    '10.0.19041',
-    '10.0.19042',
-    '10.0.19043',
-    '10.0.22000',
-    '10.0.22621',
-    '10.0.22631',
-  ],
-  linux: ['5.15.0', '5.19.0', '6.1.0', '6.2.0', '6.5.0', '6.6.0'],
-};
-
-const ARCHITECTURES = ['x64', 'arm64'] as const;
-
-const ANTIGRAVITY_VERSIONS = [
-  '1.15.8',
+const ANTIGRAVITY_PLATFORMS = [
+  'windows/amd64',
+  'darwin/arm64',
+  'darwin/amd64',
 ] as const;
-
-const IDE_TYPES = [
-  'IDE_UNSPECIFIED',
-  'VSCODE',
-  'INTELLIJ',
-  'ANDROID_STUDIO',
-  'CLOUD_SHELL_EDITOR',
-] as const;
-
-const PLATFORMS = ['PLATFORM_UNSPECIFIED', 'WINDOWS', 'MACOS', 'LINUX'] as const;
 
 const SDK_CLIENTS = [
   'google-cloud-sdk vscode_cloudshelleditor/0.1',
   'google-cloud-sdk vscode/1.86.0',
   'google-cloud-sdk vscode/1.87.0',
-  'google-cloud-sdk intellij/2024.1',
-  'google-cloud-sdk android-studio/2024.1',
-  'gcloud-python/1.2.0 grpc-google-iam-v1/0.12.6',
+  'google-cloud-sdk vscode/1.96.0',
 ] as const;
 
 function randomFrom<const T>(arr: readonly T[]): T {
@@ -52,9 +28,6 @@ export interface ClientMetadata {
   ideType: string;
   platform: string;
   pluginType: string;
-  osVersion: string;
-  arch: string;
-  sqmId?: string;
 }
 
 export interface Fingerprint {
@@ -63,62 +36,83 @@ export interface Fingerprint {
   userAgent: string;
   apiClient: string;
   clientMetadata: ClientMetadata;
-  quotaUser: string;
   createdAt: number;
+  /** @deprecated Kept for backward compatibility. */
+  quotaUser?: string;
 }
 
 export type FingerprintHeaders = {
   'User-Agent': string;
-  'X-Goog-Api-Client': string;
-  'Client-Metadata': string;
-  'X-Goog-QuotaUser': string;
-  'X-Client-Device-Id': string;
 };
 
-function generateFingerprint(): Fingerprint {
-  const platform = randomFrom(['darwin', 'win32', 'linux'] as const);
-  const arch = randomFrom(ARCHITECTURES);
-  const osVersion = randomFrom(OS_VERSIONS[platform]);
-  const antigravityVersion = randomFrom(ANTIGRAVITY_VERSIONS);
+export async function updateFingerprintVersion(
+  fingerprint: Fingerprint,
+): Promise<void> {
+  const currentVersion = await getAntigravityVersion();
+  const versionPattern = /^(antigravity\/)([\d.]+)/;
+  const match = fingerprint.userAgent.match(versionPattern);
 
-  const matchingPlatform =
-    platform === 'darwin'
-      ? 'MACOS'
-      : platform === 'win32'
-        ? 'WINDOWS'
-        : platform === 'linux'
-          ? 'LINUX'
-          : randomFrom(PLATFORMS);
+  if (!match) {
+    return;
+  }
+
+  const existingVersion = match[2];
+  if (existingVersion === currentVersion) {
+    return;
+  }
+
+  fingerprint.userAgent = fingerprint.userAgent.replace(
+    versionPattern,
+    `$1${currentVersion}`,
+  );
+}
+
+async function generateFingerprint(): Promise<Fingerprint> {
+  const version = await getAntigravityVersion();
+  const platform = randomFrom(ANTIGRAVITY_PLATFORMS);
+  const matchingPlatform = platform.startsWith('windows') ? 'WINDOWS' : 'MACOS';
 
   return {
     deviceId: crypto.randomUUID(),
     sessionToken: crypto.randomBytes(16).toString('hex'),
-    userAgent: `antigravity/${antigravityVersion} ${platform}/${arch}`,
+    userAgent: `antigravity/${version} ${platform}`,
     apiClient: randomFrom(SDK_CLIENTS),
     clientMetadata: {
-      ideType: randomFrom(IDE_TYPES),
+      ideType: 'ANTIGRAVITY',
       platform: matchingPlatform,
       pluginType: 'GEMINI',
-      osVersion,
-      arch,
-      sqmId: `{${crypto.randomUUID().toUpperCase()}}`,
     },
-    quotaUser: `device-${crypto.randomBytes(8).toString('hex')}`,
     createdAt: Date.now(),
   };
 }
 
 let sessionFingerprint: Fingerprint | null = null;
+let sessionFingerprintPromise: Promise<Fingerprint> | null = null;
 
-export function getSessionFingerprint(): Fingerprint {
-  if (!sessionFingerprint) {
-    sessionFingerprint = generateFingerprint();
+export async function getSessionFingerprint(): Promise<Fingerprint> {
+  if (sessionFingerprint) {
+    await updateFingerprintVersion(sessionFingerprint);
+    return sessionFingerprint;
   }
-  return sessionFingerprint;
+
+  if (!sessionFingerprintPromise) {
+    sessionFingerprintPromise = generateFingerprint()
+      .then(async (fingerprint) => {
+        sessionFingerprint = fingerprint;
+        await updateFingerprintVersion(fingerprint);
+        return fingerprint;
+      })
+      .finally(() => {
+        sessionFingerprintPromise = null;
+      });
+  }
+
+  return sessionFingerprintPromise;
 }
 
-export function regenerateSessionFingerprint(): Fingerprint {
-  sessionFingerprint = generateFingerprint();
+export async function regenerateSessionFingerprint(): Promise<Fingerprint> {
+  sessionFingerprint = await generateFingerprint();
+  sessionFingerprintPromise = null;
   return sessionFingerprint;
 }
 
@@ -131,9 +125,5 @@ export function buildFingerprintHeaders(
 
   return {
     'User-Agent': fingerprint.userAgent,
-    'X-Goog-Api-Client': fingerprint.apiClient,
-    'Client-Metadata': JSON.stringify(fingerprint.clientMetadata),
-    'X-Goog-QuotaUser': fingerprint.quotaUser,
-    'X-Client-Device-Id': fingerprint.deviceId,
   };
 }

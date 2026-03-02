@@ -1,5 +1,16 @@
 import { AuthConfig } from './auth/types';
 import { ProviderType } from './client/definitions';
+import type { RetryConfig } from './utils';
+import type { TokenizerId } from './tokenizer/tokenizers';
+import { BalanceConfig } from './balance/types';
+
+export type ContextCacheType = 'only-free' | 'allow-paid';
+
+export interface ContextCacheConfig {
+  type?: ContextCacheType;
+  /** TTL in seconds. */
+  ttl?: number;
+}
 
 /**
  * Configuration for a single provider endpoint
@@ -16,6 +27,10 @@ export interface ProviderConfig {
    */
   auth?: AuthConfig;
   /**
+   * Optional provider-level balance monitoring configuration.
+   */
+  balanceProvider?: BalanceConfig;
+  /**
    * @deprecated Use `auth` field instead. This field is kept for configuration migration
    * and will be removed in a future version.
    */
@@ -28,8 +43,12 @@ export interface ProviderConfig {
   extraBody?: Record<string, unknown>;
   /** Timeout configuration */
   timeout?: TimeoutConfig;
+  /** Retry configuration */
+  retry?: RetryConfig;
   /** Whether to auto-fetch official models from the provider API */
   autoFetchOfficialModels?: boolean;
+  /** Context cache / prompt caching configuration. */
+  contextCache?: ContextCacheConfig;
 }
 
 export type DeprecatedProviderConfigKey = 'apiKey';
@@ -62,6 +81,18 @@ export interface ModelConfig {
    * others treat it as optional and apply a server-side default if omitted.
    */
   maxOutputTokens?: number;
+  /**
+   * Tokenizer used for VS Code token counting (`provideTokenCount`).
+   *
+   * Default: `default`
+   */
+  tokenizer?: TokenizerId;
+  /**
+   * Multiplier applied to the final token count before returning to VS Code.
+   *
+   * Default: `1.0`
+   */
+  tokenCountMultiplier?: number;
   /** Model capabilities */
   capabilities?: ModelCapabilities;
   /** Whether to stream the response */
@@ -140,13 +171,13 @@ export interface ModelCapabilities {
 export interface TimeoutConfig {
   /**
    * Maximum time to wait for the TCP connection to be established.
-   * Default: 10000 (10 seconds)
+   * Default: 60000 (60 seconds)
    */
   connection?: number;
   /**
    * Maximum time to wait between receiving data chunks during SSE streaming.
    * Resets each time new data is received (token, SSE ping, keep-alive, etc.).
-   * Default: 120000 (2 minutes)
+   * Default: 300000 (5 minutes)
    */
   response?: number;
 }

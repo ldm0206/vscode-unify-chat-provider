@@ -20,7 +20,7 @@ import type {
 } from 'ollama';
 import {
   decodeStatefulMarkerPart,
-  DEFAULT_CHAT_TIMEOUT_CONFIG,
+  createStatefulMarkerIdentity,
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   FetchMode,
   encodeStatefulMarkerPart,
@@ -28,6 +28,8 @@ import {
   isImageMarker,
   isInternalMarker,
   normalizeImageMimeType,
+  resolveChatNetwork,
+  sanitizeMessagesForModelSwitch,
   withIdleTimeout,
 } from '../../utils';
 import { getBaseModelId } from '../../model-id-utils';
@@ -85,20 +87,21 @@ export class OllamaProvider implements ApiProvider {
     mode: FetchMode = 'chat',
   ): Ollama {
     const streamEnabled = stream ?? true;
-    const fallbackTimeout =
-      mode === 'chat'
-        ? DEFAULT_CHAT_TIMEOUT_CONFIG
-        : DEFAULT_NORMAL_TIMEOUT_CONFIG;
+    const chatNetwork =
+      mode === 'chat' ? resolveChatNetwork(this.config) : undefined;
+    const effectiveTimeout =
+      chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
     const requestTimeoutMs = streamEnabled
-      ? (this.config.timeout?.connection ?? fallbackTimeout.connection)
-      : (this.config.timeout?.response ?? fallbackTimeout.response);
+      ? effectiveTimeout.connection
+      : effectiveTimeout.response;
 
     return new Ollama({
       host: this.baseUrl,
       fetch: createCustomFetch({
         connectionTimeoutMs: requestTimeoutMs,
         logger,
+        retryConfig: chatNetwork?.retry,
         type: mode,
         abortSignal,
       }),
@@ -109,6 +112,7 @@ export class OllamaProvider implements ApiProvider {
   private convertMessages(
     encodedModelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
+    expectedIdentity: string,
   ): Message[] {
     const outMessages: Message[] = [];
     const rawMap = new Map<Message, Message>();
@@ -130,14 +134,16 @@ export class OllamaProvider implements ApiProvider {
           break;
 
         case vscode.LanguageModelChatMessageRole.Assistant: {
-          const rawPart = msg.content.find(
-            (v) => v instanceof vscode.LanguageModelDataPart,
-          ) as vscode.LanguageModelDataPart | undefined;
-          if (rawPart) {
+          const markerParts = msg.content.filter(
+            (v): v is vscode.LanguageModelDataPart =>
+              v instanceof vscode.LanguageModelDataPart && isInternalMarker(v),
+          );
+          if (markerParts.length === 1) {
             try {
               const raw = decodeStatefulMarkerPart<Message>(
+                expectedIdentity,
                 encodedModelId,
-                rawPart,
+                markerParts[0],
               );
               const placeholder: Message = {
                 role: 'assistant',
@@ -480,7 +486,16 @@ export class OllamaProvider implements ApiProvider {
       return;
     }
 
-    const convertedMessages = this.convertMessages(encodedModelId, messages);
+    const expectedIdentity = createStatefulMarkerIdentity(this.config, model);
+    const sanitizedMessages = sanitizeMessagesForModelSwitch(messages, {
+      modelId: encodedModelId,
+      expectedIdentity,
+    });
+    const convertedMessages = this.convertMessages(
+      encodedModelId,
+      sanitizedMessages,
+      expectedIdentity,
+    );
     const tools = this.convertTools(options.tools);
     const requestOptions = this.buildOptions(model);
 
@@ -499,8 +514,7 @@ export class OllamaProvider implements ApiProvider {
 
     try {
       if (streamEnabled) {
-        const responseTimeoutMs =
-          this.config.timeout?.response ?? DEFAULT_CHAT_TIMEOUT_CONFIG.response;
+        const responseTimeoutMs = resolveChatNetwork(this.config).timeout.response;
 
         stream = await client.chat({ ...baseBody, stream: true });
         const timedStream = withIdleTimeout(
@@ -513,10 +527,11 @@ export class OllamaProvider implements ApiProvider {
           token,
           logger,
           performanceTrace,
+          expectedIdentity,
         );
       } else {
         const result = await client.chat({ ...baseBody, stream: false });
-        yield* this.parseMessage(result, performanceTrace, logger);
+        yield* this.parseMessage(result, performanceTrace, logger, expectedIdentity);
       }
     } finally {
       cancellationListener.dispose();
@@ -527,6 +542,7 @@ export class OllamaProvider implements ApiProvider {
     message: ChatResponse,
     performanceTrace: PerformanceTrace,
     logger: RequestLogger,
+    expectedIdentity: string,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     // NOTE: The current behavior of VSCode is such that all Parts returned here will be
     // aggregated into a single Part during the next request, and only the Thinking part
@@ -564,7 +580,7 @@ export class OllamaProvider implements ApiProvider {
       }
     }
 
-    yield encodeStatefulMarkerPart<Message>(raw);
+    yield encodeStatefulMarkerPart<Message>(expectedIdentity, raw);
 
     this.processUsage(
       {
@@ -581,6 +597,7 @@ export class OllamaProvider implements ApiProvider {
     token: vscode.CancellationToken,
     logger: RequestLogger,
     performanceTrace: PerformanceTrace,
+    expectedIdentity: string,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     let snapshot: Message | undefined;
     let usage:
@@ -641,7 +658,7 @@ export class OllamaProvider implements ApiProvider {
       }
 
       yield* this.extractThinkingParts(snapshot.thinking, 'metadata-only');
-      yield encodeStatefulMarkerPart<Message>(snapshot);
+      yield encodeStatefulMarkerPart<Message>(expectedIdentity, snapshot);
     }
 
     if (usage) {

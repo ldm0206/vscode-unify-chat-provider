@@ -20,7 +20,8 @@ import { createSimpleHttpLogger } from '../../logger';
 import type { ProviderHttpLogger, RequestLogger } from '../../logger';
 import { ApiProvider } from '../interface';
 import {
-  DEFAULT_CHAT_TIMEOUT_CONFIG,
+  createStatefulMarkerIdentity,
+  DEFAULT_CONTEXT_CACHE_TTL_SECONDS,
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   FetchMode,
   isCacheControlMarker,
@@ -30,6 +31,9 @@ import {
   decodeStatefulMarkerPart,
   normalizeImageMimeType,
   parseThinkingTags,
+  resolveContextCacheConfig,
+  resolveChatNetwork,
+  sanitizeMessagesForModelSwitch,
   StreamingThinkingTagParser,
   withIdleTimeout,
 } from '../../utils';
@@ -85,14 +89,14 @@ export class AnthropicProvider implements ApiProvider {
     abortSignal?: AbortSignal,
     mode: FetchMode = 'chat',
   ): Anthropic {
-    const fallbackTimeout =
-      mode === 'chat'
-        ? DEFAULT_CHAT_TIMEOUT_CONFIG
-        : DEFAULT_NORMAL_TIMEOUT_CONFIG;
+    const chatNetwork =
+      mode === 'chat' ? resolveChatNetwork(this.config) : undefined;
+    const effectiveTimeout =
+      chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
     const requestTimeoutMs = stream
-      ? (this.config.timeout?.connection ?? fallbackTimeout.connection)
-      : (this.config.timeout?.response ?? fallbackTimeout.response);
+      ? effectiveTimeout.connection
+      : effectiveTimeout.response;
 
     const token = getToken(credential);
 
@@ -114,6 +118,7 @@ export class AnthropicProvider implements ApiProvider {
       fetch: createCustomFetch({
         connectionTimeoutMs: requestTimeoutMs,
         logger,
+        retryConfig: chatNetwork?.retry,
         type: mode,
         abortSignal,
       }),
@@ -173,6 +178,7 @@ export class AnthropicProvider implements ApiProvider {
   private convertMessages(
     encodedModelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
+    expectedIdentity: string,
   ): {
     system?: string | BetaTextBlockParam[];
     messages: BetaMessageParam[];
@@ -202,29 +208,37 @@ export class AnthropicProvider implements ApiProvider {
           break;
 
         case vscode.LanguageModelChatMessageRole.Assistant:
-          const rawPart = msg.content.find(
-            (v) => v instanceof vscode.LanguageModelDataPart,
-          ) as vscode.LanguageModelDataPart | undefined;
-          if (rawPart) {
-            try {
-              const decoded = decodeStatefulMarkerPart<{
-                raw: BetaMessage;
-                userId?: string;
-              }>(encodedModelId, rawPart);
-              const raw = decoded.raw;
-              if (firstHistoryUserId == null && decoded.userId) {
-                firstHistoryUserId = decoded.userId;
+          {
+            const markerParts = msg.content.filter(
+              (v): v is vscode.LanguageModelDataPart =>
+                v instanceof vscode.LanguageModelDataPart &&
+                isInternalMarker(v),
+            );
+
+            if (markerParts.length === 1) {
+              try {
+                const decoded = decodeStatefulMarkerPart<{
+                  raw: BetaMessage;
+                  userId?: string;
+                }>(expectedIdentity, encodedModelId, markerParts[0]);
+                const raw = decoded.raw;
+                if (firstHistoryUserId == null && decoded.userId) {
+                  firstHistoryUserId = decoded.userId;
+                }
+                if (raw) {
+                  const message: BetaMessageParam = {
+                    role: 'assistant',
+                    content: '',
+                  };
+                  rawMap.set(message, raw);
+                  outMessages.push(message);
+                  break;
+                }
+              } catch {
+                // fall back to best-effort conversion
               }
-              if (raw) {
-                const message: BetaMessageParam = {
-                  role: 'assistant',
-                  content: '',
-                };
-                rawMap.set(message, raw);
-                outMessages.push(message);
-              }
-            } catch (error) {}
-          } else {
+            }
+
             for (const part of msg.content) {
               const blocks = this.convertPart(msg.role, part);
               if (blocks)
@@ -258,9 +272,19 @@ export class AnthropicProvider implements ApiProvider {
     system: Anthropic.Beta.Messages.BetaTextBlockParam[],
     outMessages: Anthropic.Beta.Messages.BetaMessageParam[],
   ) {
+    const resolved = resolveContextCacheConfig(this.config.contextCache);
+    const useOneHourTtl =
+      resolved.type === 'allow-paid' &&
+      Math.abs(resolved.ttlSeconds - 3600) <
+        Math.abs(resolved.ttlSeconds - DEFAULT_CONTEXT_CACHE_TTL_SECONDS);
+
+    const cacheControl = useOneHourTtl
+      ? { type: 'ephemeral' as const, ttl: '1h' as const }
+      : { type: 'ephemeral' as const };
+
     const lastSystem = system.at(-1);
     if (lastSystem) {
-      lastSystem.cache_control = { type: 'ephemeral' };
+      lastSystem.cache_control = cacheControl;
     }
     const lastUser = outMessages.filter((m) => m.role === 'user').at(-1);
     if (lastUser) {
@@ -275,13 +299,13 @@ export class AnthropicProvider implements ApiProvider {
           : lastUser.content;
       const lastContent = newContents.at(-1);
       if (lastContent && this.isCacheControlApplicableBlock(lastContent)) {
-        lastContent.cache_control = { type: 'ephemeral' };
+        lastContent.cache_control = cacheControl;
       } else {
         newContents.push({
           type: 'text',
           // Anthropic does not accept empty string text blocks
           text: ' ',
-          cache_control: { type: 'ephemeral' },
+          cache_control: cacheControl,
         } satisfies BetaTextBlockParam);
       }
     }
@@ -675,6 +699,12 @@ export class AnthropicProvider implements ApiProvider {
       return;
     }
 
+    const expectedIdentity = createStatefulMarkerIdentity(this.config, model);
+    const sanitizedMessages = sanitizeMessagesForModelSwitch(messages, {
+      modelId: encodedModelId,
+      expectedIdentity,
+    });
+
     const thinkingType = model.thinking?.type;
     const thinkingEnabled =
       thinkingType === 'enabled' || thinkingType === 'auto';
@@ -694,7 +724,11 @@ export class AnthropicProvider implements ApiProvider {
       system,
       messages: anthropicMessages,
       historyUserId,
-    } = this.convertMessages(encodedModelId, messages);
+    } = this.convertMessages(
+      encodedModelId,
+      sanitizedMessages,
+      expectedIdentity,
+    );
 
     // Convert tools with model config for web search and memory tool support
     // Also add tools if web search is enabled even without explicit tools
@@ -731,6 +765,14 @@ export class AnthropicProvider implements ApiProvider {
     // Fine-grained tool streaming for Claude models when using tools with streaming.
     if (fineGrainedToolStreamingEnabled) {
       betaFeatures.add('fine-grained-tool-streaming-2025-05-14');
+    }
+
+    // Enable 1M context beta for supported Claude models when maxOutputTokens > 1,000,000
+    if (
+      (model.maxOutputTokens ?? 0) > 1_000_000 &&
+      isFeatureSupported(FeatureId.AnthropicContext1M, this.config, model)
+    ) {
+      betaFeatures.add('context-1m-2025-08-07');
     }
 
     this.addAdditionalBetaFeatures({
@@ -854,8 +896,8 @@ export class AnthropicProvider implements ApiProvider {
         );
 
         // Wrap stream with idle timeout
-        const responseTimeoutMs =
-          this.config.timeout?.response ?? DEFAULT_CHAT_TIMEOUT_CONFIG.response;
+        const responseTimeoutMs = resolveChatNetwork(this.config).timeout
+          .response;
         const timedStream = withIdleTimeout(
           sdkStream,
           responseTimeoutMs,
@@ -869,6 +911,7 @@ export class AnthropicProvider implements ApiProvider {
           performanceTrace,
           fineGrainedToolStreamingEnabled,
           requestState,
+          expectedIdentity,
         );
       } else {
         const result = await client.beta.messages.create(
@@ -886,6 +929,7 @@ export class AnthropicProvider implements ApiProvider {
           performanceTrace,
           logger,
           requestState,
+          expectedIdentity,
         );
       }
     } finally {
@@ -898,6 +942,7 @@ export class AnthropicProvider implements ApiProvider {
     performanceTrace: PerformanceTrace,
     logger: RequestLogger,
     state: { userId?: string },
+    expectedIdentity: string,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     // NOTE: The current behavior of VSCode is such that all Parts returned here will be
     // aggregated into a single Part during the next request, and only the Thinking part
@@ -961,10 +1006,13 @@ export class AnthropicProvider implements ApiProvider {
           throw new Error(`Unsupported message block type: ${block.type}`);
       }
     }
-    yield encodeStatefulMarkerPart<{ raw: BetaMessage; userId?: string }>({
-      raw,
-      userId: state.userId,
-    });
+    yield encodeStatefulMarkerPart<{ raw: BetaMessage; userId?: string }>(
+      expectedIdentity,
+      {
+        raw,
+        userId: state.userId,
+      },
+    );
 
     if (message.usage) {
       this.processUsage(message.usage, performanceTrace, logger);
@@ -978,6 +1026,7 @@ export class AnthropicProvider implements ApiProvider {
     performanceTrace: PerformanceTrace,
     fineGrainedToolStreamingEnabled: boolean,
     state: { userId?: string },
+    expectedIdentity: string,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     let raw: BetaMessage | undefined;
 
@@ -1088,7 +1137,16 @@ export class AnthropicProvider implements ApiProvider {
         }
 
         case 'message_stop': {
+          for (const segment of thinkingTagParser.flush()) {
+            if (segment.type === 'thinking') {
+              yield new vscode.LanguageModelThinkingPart(segment.content);
+            } else {
+              yield new vscode.LanguageModelTextPart(segment.content);
+            }
+          }
+
           yield encodeStatefulMarkerPart<{ raw: BetaMessage; userId?: string }>(
+            expectedIdentity,
             {
               raw,
               userId: state.userId,

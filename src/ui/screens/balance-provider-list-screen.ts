@@ -1,0 +1,329 @@
+import * as vscode from 'vscode';
+import type { ProviderConfig } from '../../types';
+import type { BalanceProviderState } from '../../balance/types';
+import {
+  balanceManager,
+  formatDetailLines,
+  isUnlimited,
+  resolveProgressPercent,
+} from '../../balance';
+import { evaluateBalanceWarning } from '../../balance/warning-utils';
+import { stableStringify } from '../../config-ops';
+import { t } from '../../i18n';
+import { pickQuickItem } from '../component';
+import { createProviderDraft } from '../form-utils';
+import { saveProviderDraft } from '../provider-ops';
+import { editBalanceMonitorField, type ProviderFieldContext } from '../provider-fields';
+import type {
+  BalanceProviderListRoute,
+  UiContext,
+  UiNavAction,
+  UiResume,
+} from '../router/types';
+
+type BalanceProviderListItem = vscode.QuickPickItem & {
+  action?:
+    | 'noop'
+    | 'provider'
+    | 'edit-provider'
+    | 'refresh-all'
+    | 'view-all-providers';
+  providerName?: string;
+};
+
+function hasConfiguredBalanceProvider(provider: ProviderConfig): boolean {
+  return !!provider.balanceProvider && provider.balanceProvider.method !== 'none';
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
+}
+
+function resolveRemainingPercent(state: BalanceProviderState | undefined): number | undefined {
+  return resolveProgressPercent(state?.snapshot);
+}
+
+function formatProgressBar(percent: number | undefined): string | undefined {
+  const width = 10;
+
+  if (percent === undefined) {
+    return undefined;
+  }
+
+  const clamped = clampPercent(percent);
+  const filled = Math.floor((clamped / 100) * width);
+  const empty = Math.max(0, width - filled);
+
+  const bar = `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
+  return `${bar} ${Math.round(clamped)}%`;
+}
+
+function isUnlimitedBalanceState(state: BalanceProviderState | undefined): boolean {
+  return isUnlimited(state?.snapshot);
+}
+
+function formatBalanceDetail(state: BalanceProviderState | undefined): string {
+  return formatDetailLines(state).join(' | ');
+}
+
+async function configureBalanceMonitor(options: {
+  ctx: UiContext;
+  providerName: string;
+}): Promise<void> {
+  const provider = options.ctx.store.getProvider(options.providerName);
+  if (!provider) {
+    vscode.window.showErrorMessage(
+      t('Provider "{0}" not found.', options.providerName),
+    );
+    return;
+  }
+
+  const draft = createProviderDraft(provider);
+  const fieldCtx: ProviderFieldContext = {
+    store: options.ctx.store,
+    originalName: provider.name,
+    onEditModels: async () => {},
+    onEditTimeout: async () => {},
+    secretStore: options.ctx.secretStore,
+    uriHandler: options.ctx.uriHandler,
+  };
+
+  const before = stableStringify(provider.balanceProvider);
+  await editBalanceMonitorField(draft, fieldCtx);
+  const after = stableStringify(draft.balanceProvider);
+  if (before === after) {
+    return;
+  }
+
+  const saved = await saveProviderDraft({
+    draft,
+    store: options.ctx.store,
+    secretStore: options.ctx.secretStore,
+    existing: provider,
+    originalName: provider.name,
+    skipConflictResolution: true,
+  });
+
+  if (saved === 'saved') {
+    balanceManager.requestRefresh(provider.name, 'manual');
+  }
+}
+
+export async function runBalanceProviderListScreen(
+  ctx: UiContext,
+  _route: BalanceProviderListRoute,
+  _resume: UiResume | undefined,
+): Promise<UiNavAction> {
+  const buildItems = async (): Promise<BalanceProviderListItem[]> => {
+    const providers = ctx.store.endpoints.filter((provider) =>
+      hasConfiguredBalanceProvider(provider),
+    );
+
+    providers.sort((a, b) => {
+      const at = balanceManager.getProviderLastUsedAt(a.name) ?? 0;
+      const bt = balanceManager.getProviderLastUsedAt(b.name) ?? 0;
+      if (bt !== at) {
+        return bt - at;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    const items: BalanceProviderListItem[] = [];
+
+    if (providers.length === 0) {
+      items.push({
+        label: t('No providers have balance monitoring configured.'),
+        description: t('Configure a balance monitor in provider settings.'),
+        action: 'noop',
+        alwaysShow: true,
+      });
+    } else {
+      const warningThresholds = {
+        ...ctx.store.balanceWarning,
+        enabled: true,
+      };
+
+      for (const provider of providers) {
+        const state = balanceManager.getProviderState(provider.name);
+        const percent = resolveRemainingPercent(state);
+        const description =
+          formatProgressBar(percent) ??
+          (isUnlimitedBalanceState(state) ? t('Unlimited') : undefined);
+        const detail = formatBalanceDetail(state);
+        const warning = evaluateBalanceWarning(
+          state?.snapshot?.items,
+          warningThresholds,
+        );
+        const label = warning.isNearThreshold
+          ? `$(warning) ${provider.name}`
+          : provider.name;
+
+        items.push({
+          label,
+          description,
+          detail,
+          action: 'provider',
+          providerName: provider.name,
+          buttons: [
+            {
+              iconPath: new vscode.ThemeIcon('refresh'),
+              tooltip: t('Refresh now'),
+            },
+            {
+              iconPath: new vscode.ThemeIcon('gear'),
+              tooltip: t('Edit Provider'),
+            },
+          ],
+        });
+      }
+    }
+
+    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+    items.push({
+      label: '$(refresh) ' + t('Refresh all balances'),
+      action: 'refresh-all',
+      alwaysShow: true,
+    });
+    items.push({
+      label: '$(list-unordered) ' + t('View all providers...'),
+      action: 'view-all-providers',
+      alwaysShow: true,
+    });
+
+    return items;
+  };
+
+  const selection = await pickQuickItem<BalanceProviderListItem>({
+    title: t('Provider Balance Monitoring'),
+    placeholder: t('Select a provider to configure balance monitor'),
+    ignoreFocusOut: false,
+    items: await buildItems(),
+    onInlineAction: async (item, qp) => {
+      if (item.action === 'noop') {
+        return true;
+      }
+
+      if (item.action === 'refresh-all') {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: t('Refreshing provider balances...'),
+            cancellable: false,
+          },
+          async () => {
+            await balanceManager.forceRefreshAll();
+          },
+        );
+        qp.items = await buildItems();
+        return true;
+      }
+
+      return;
+    },
+    onDidTriggerItemButton: async (event) => {
+      const item = event.item;
+      if (item.action !== 'provider' || !item.providerName) {
+        return;
+      }
+
+      const buttonIndex = item.buttons?.findIndex((b) => b === event.button);
+      if (buttonIndex === 0) {
+        balanceManager.requestRefresh(item.providerName, 'manual');
+        return;
+      }
+
+      if (buttonIndex === 1) {
+        return { ...item, action: 'edit-provider' };
+      }
+
+      return;
+    },
+    onExternalRefresh: (refreshItems) => {
+      let disposed = false;
+      let refreshInFlight = false;
+      const disposables: vscode.Disposable[] = [];
+
+      const refreshView = async (): Promise<void> => {
+        if (disposed || refreshInFlight) {
+          return;
+        }
+        refreshInFlight = true;
+        try {
+          refreshItems(await buildItems());
+        } finally {
+          refreshInFlight = false;
+        }
+      };
+
+      disposables.push(ctx.store.onDidChange(() => void refreshView()));
+      disposables.push(balanceManager.onDidUpdate(() => void refreshView()));
+
+      void refreshView();
+
+      return {
+        dispose: () => {
+          disposed = true;
+          for (const disposable of disposables) {
+            disposable.dispose();
+          }
+        },
+      };
+    },
+  });
+
+  if (!selection) {
+    return { kind: 'pop' };
+  }
+
+  if (selection.action === 'view-all-providers') {
+    return { kind: 'replace', route: { kind: 'providerList' } };
+  }
+
+  if (selection.action === 'provider' && selection.providerName) {
+    await configureBalanceMonitor({
+      ctx,
+      providerName: selection.providerName,
+    });
+    return { kind: 'stay' };
+  }
+
+  if (selection.action === 'edit-provider' && selection.providerName) {
+    const existing = ctx.store.getProvider(selection.providerName);
+    if (!existing) {
+      vscode.window.showErrorMessage(
+        t('Provider "{0}" not found.', selection.providerName),
+      );
+      return { kind: 'stay' };
+    }
+
+    const draft = createProviderDraft(existing);
+    return {
+      kind: 'push',
+      route: {
+        kind: 'modelList',
+        invocation: 'providerEdit',
+        models: draft.models,
+        providerLabel: existing.name,
+        requireAtLeastOne: false,
+        draft,
+        existing,
+        originalName: existing.name,
+        confirmDiscardOnBack: true,
+        onSave: async () =>
+          saveProviderDraft({
+            draft,
+            store: ctx.store,
+            secretStore: ctx.secretStore,
+            existing,
+            originalName: existing.name,
+          }),
+        afterSave: 'pop',
+      },
+    };
+  }
+
+  return { kind: 'stay' };
+}

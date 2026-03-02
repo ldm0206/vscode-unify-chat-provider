@@ -10,6 +10,7 @@ import type { EventedUriHandler } from '../uri-handler';
 import { runRemoveProviderScreen } from './screens/remove-provider-screen';
 import { SecretStore } from '../secret';
 import { resolveProvidersForExportOrShowError } from '../auth/auth-transfer';
+import { resolveProvidersBalanceForExportOrShowError } from '../balance/balance-transfer';
 import { promptForSensitiveDataInclusion } from './provider-ops';
 import { t } from '../i18n';
 
@@ -20,6 +21,15 @@ export async function manageProviders(
 ): Promise<void> {
   const ctx: UiContext = { store, secretStore, uriHandler };
   await runUiStack(ctx, { kind: 'providerList' });
+}
+
+export async function manageBalances(
+  store: ConfigStore,
+  secretStore: SecretStore,
+  uriHandler?: EventedUriHandler,
+): Promise<void> {
+  const ctx: UiContext = { store, secretStore, uriHandler };
+  await runUiStack(ctx, { kind: 'balanceProviderList' });
 }
 
 export async function addProvider(
@@ -89,7 +99,15 @@ export async function exportAllProviders(
     includeSensitive,
   });
   if (!resolved) return;
-  await showCopiedBase64Config(resolved);
+
+  const resolvedWithBalance = await resolveProvidersBalanceForExportOrShowError({
+    secretStore,
+    providers: resolved,
+    includeSensitive,
+  });
+  if (!resolvedWithBalance) return;
+
+  await showCopiedBase64Config(resolvedWithBalance);
 }
 
 export async function removeProvider(

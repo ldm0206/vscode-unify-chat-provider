@@ -2,7 +2,13 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { DataPartMimeTypes, StatefulMarkerData } from './client/types';
 import type { ProviderHttpLogger } from './logger';
 import { officialModelsManager } from './official-models-manager';
-import type { ModelConfig, ProviderConfig } from './types';
+import type {
+  ContextCacheConfig,
+  ContextCacheType,
+  ModelConfig,
+  ProviderConfig,
+  TimeoutConfig,
+} from './types';
 import * as vscode from 'vscode';
 import { t } from './i18n';
 
@@ -11,6 +17,9 @@ import { t } from './i18n';
  * Uses double underscores to clearly distinguish from real model IDs.
  */
 export const PLACEHOLDER_MODEL_ID = '__PLACEHOLDER__';
+
+export const DEFAULT_CONTEXT_CACHE_TTL_SECONDS = 300;
+export const DEFAULT_CONTEXT_CACHE_TYPE: ContextCacheType = 'only-free';
 
 /**
  * Check if a model ID is a placeholder.
@@ -84,7 +93,7 @@ export const DEFAULT_CHAT_TIMEOUT_CONFIG = {
 } as const;
 
 export function buildOpencodeUserAgent(): string {
-  // Matches OpenCode's GitHub Copilot / CodeX user-agent style.
+  // Matches OpenCode's GitHub Copilot / Codex user-agent style.
   return 'opencode/1.1.28 ai-sdk/provider-utils/3.0.20 runtime/bun/1.3.5';
 }
 
@@ -94,6 +103,171 @@ export interface RetryConfig {
   maxDelayMs?: number;
   backoffMultiplier?: number;
   jitterFactor?: number;
+}
+
+export interface ResolvedChatTimeoutConfig {
+  connection: number;
+  response: number;
+}
+
+export interface ResolvedChatRetryConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+  jitterFactor: number;
+}
+
+export interface ResolvedChatNetworkConfig {
+  timeout: ResolvedChatTimeoutConfig;
+  retry: ResolvedChatRetryConfig;
+}
+
+export interface ChatNetworkOverrides {
+  timeout?: TimeoutConfig;
+  retry?: RetryConfig;
+}
+
+const CHAT_NETWORK_CONFIG_NAMESPACE = 'unifyChatProvider';
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function readNonNegativeInteger(value: unknown): number | undefined {
+  const n = readFiniteNumber(value);
+  if (n === undefined || !Number.isInteger(n) || n < 0) {
+    return undefined;
+  }
+  return n;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const n = readFiniteNumber(value);
+  if (n === undefined || !Number.isInteger(n) || n <= 0) {
+    return undefined;
+  }
+  return n;
+}
+
+export function resolveContextCacheConfig(
+  raw: ContextCacheConfig | undefined,
+): { type: ContextCacheType; ttlSeconds: number } {
+  const type =
+    raw?.type === 'only-free' || raw?.type === 'allow-paid'
+      ? raw.type
+      : DEFAULT_CONTEXT_CACHE_TYPE;
+
+  const ttlSeconds =
+    readPositiveInteger(raw?.ttl) ?? DEFAULT_CONTEXT_CACHE_TTL_SECONDS;
+
+  return { type, ttlSeconds };
+}
+
+function readBackoffMultiplier(value: unknown): number | undefined {
+  const n = readFiniteNumber(value);
+  if (n === undefined || n < 1) {
+    return undefined;
+  }
+  return n;
+}
+
+function readJitterFactor(value: unknown): number | undefined {
+  const n = readFiniteNumber(value);
+  if (n === undefined || n < 0 || n > 1) {
+    return undefined;
+  }
+  return n;
+}
+
+function applyTimeoutOverrides(
+  target: ResolvedChatTimeoutConfig,
+  raw: unknown,
+): void {
+  if (!isRecord(raw)) return;
+
+  const connection = readPositiveInteger(raw['connection']);
+  if (connection !== undefined) target.connection = connection;
+
+  const response = readPositiveInteger(raw['response']);
+  if (response !== undefined) target.response = response;
+}
+
+function applyRetryOverrides(
+  target: ResolvedChatRetryConfig,
+  raw: unknown,
+): void {
+  if (!isRecord(raw)) return;
+
+  const maxRetries = readNonNegativeInteger(raw['maxRetries']);
+  if (maxRetries !== undefined) target.maxRetries = maxRetries;
+
+  const initialDelayMs = readNonNegativeInteger(raw['initialDelayMs']);
+  if (initialDelayMs !== undefined) target.initialDelayMs = initialDelayMs;
+
+  const maxDelayMs = readPositiveInteger(raw['maxDelayMs']);
+  if (maxDelayMs !== undefined) target.maxDelayMs = maxDelayMs;
+
+  const backoffMultiplier = readBackoffMultiplier(raw['backoffMultiplier']);
+  if (backoffMultiplier !== undefined) {
+    target.backoffMultiplier = backoffMultiplier;
+  }
+
+  const jitterFactor = readJitterFactor(raw['jitterFactor']);
+  if (jitterFactor !== undefined) target.jitterFactor = jitterFactor;
+}
+
+function readGlobalChatNetworkOverrides(): {
+  timeout?: unknown;
+  retry?: unknown;
+} {
+  const config = vscode.workspace.getConfiguration(
+    CHAT_NETWORK_CONFIG_NAMESPACE,
+  );
+  const raw = config.get<unknown>('networkSettings');
+  if (!isRecord(raw)) return {};
+
+  const timeout = raw['timeout'];
+  const retry = raw['retry'];
+
+  return { timeout, retry };
+}
+
+/**
+ * Resolve effective network settings for *chat requests*.
+ *
+ * Merge order:
+ * 1) Built-in defaults (DEFAULT_CHAT_*)
+ * 2) Global settings: `unifyChatProvider.networkSettings`
+ * 3) Provider overrides (stored in the provider config)
+ */
+export function resolveChatNetwork(
+  overrides: ChatNetworkOverrides | undefined,
+): ResolvedChatNetworkConfig {
+  const resolved: ResolvedChatNetworkConfig = {
+    timeout: {
+      connection: DEFAULT_CHAT_TIMEOUT_CONFIG.connection,
+      response: DEFAULT_CHAT_TIMEOUT_CONFIG.response,
+    },
+    retry: {
+      maxRetries: DEFAULT_CHAT_RETRY_CONFIG.maxRetries,
+      initialDelayMs: DEFAULT_CHAT_RETRY_CONFIG.initialDelayMs,
+      maxDelayMs: DEFAULT_CHAT_RETRY_CONFIG.maxDelayMs,
+      backoffMultiplier: DEFAULT_CHAT_RETRY_CONFIG.backoffMultiplier,
+      jitterFactor: DEFAULT_CHAT_RETRY_CONFIG.jitterFactor,
+    },
+  };
+
+  const global = readGlobalChatNetworkOverrides();
+  applyTimeoutOverrides(resolved.timeout, global.timeout);
+  applyRetryOverrides(resolved.retry, global.retry);
+
+  applyTimeoutOverrides(resolved.timeout, overrides?.timeout);
+  applyRetryOverrides(resolved.retry, overrides?.retry);
+
+  return resolved;
 }
 
 export interface FetchWithRetryOptions extends RequestInit {
@@ -256,6 +430,112 @@ export function isAbortError(error: unknown): boolean {
   return false;
 }
 
+function tryGetErrorCode(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  if (!('code' in value)) {
+    return undefined;
+  }
+  const code = (value as { code: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  const direct = tryGetErrorCode(error);
+  if (direct) {
+    return direct;
+  }
+  if (typeof error === 'object' && error !== null && 'cause' in error) {
+    return tryGetErrorCode((error as { cause: unknown }).cause);
+  }
+  return undefined;
+}
+
+const ABORT_LIKE_ERROR_CODES = new Set<string>([
+  'ABORT_ERR',
+  'ERR_ABORTED',
+  'UND_ERR_ABORTED',
+]);
+
+const TIMEOUT_LIKE_ERROR_CODES = new Set<string>([
+  'ETIMEDOUT',
+  'ECONNABORTED',
+  'ESOCKETTIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+]);
+
+export function createTimeoutError(message: string): Error {
+  const timeoutError = new Error(message);
+  timeoutError.name = 'TimeoutError';
+  return timeoutError;
+}
+
+export function isAbortLikeError(error: unknown): boolean {
+  if (isAbortError(error)) {
+    return true;
+  }
+
+  const code = getErrorCode(error);
+  if (code && ABORT_LIKE_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('aborted') ||
+    (error.name === 'TypeError' && message.includes('terminated'))
+  );
+}
+
+export function isTimeoutLikeError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  if (error instanceof Error && error.name === 'TimeoutError') {
+    return true;
+  }
+
+  const code = getErrorCode(error);
+  if (code && TIMEOUT_LIKE_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    (error.name === 'TypeError' && message.includes('terminated')) ||
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('fetch.onaborted')
+  );
+}
+
+export function normalizeTimeoutLikeError(
+  error: unknown,
+  timeoutMessage: string,
+): Error {
+  if (error instanceof Error && error.name === 'TimeoutError') {
+    return error;
+  }
+
+  if (!isTimeoutLikeError(error)) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+
+  return createTimeoutError(timeoutMessage);
+}
+
 function throwIfAborted(signal: AbortSignal | null | undefined): void {
   if (!signal) {
     return;
@@ -265,7 +545,10 @@ function throwIfAborted(signal: AbortSignal | null | undefined): void {
   }
 }
 
-function delay(ms: number, abortSignal?: AbortSignal | null): Promise<void> {
+export function delay(
+  ms: number,
+  abortSignal?: AbortSignal | null,
+): Promise<void> {
   if (ms <= 0) {
     return Promise.resolve();
   }
@@ -318,7 +601,7 @@ function escapeRegExp(value: string): string {
  * @param config Retry configuration
  * @returns Delay in milliseconds
  */
-function calculateBackoffDelay(
+export function calculateBackoffDelay(
   attempt: number,
   config: {
     initialDelayMs: number;
@@ -342,6 +625,19 @@ function calculateBackoffDelay(
 }
 
 /**
+ * Build a human-readable detail string for network-level errors.
+ * Used when logging retries for errors that don't have an HTTP status code.
+ */
+export function describeNetworkError(error: unknown): string {
+  const code = getErrorCode(error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (code) {
+    return `${code}: ${message}`;
+  }
+  return message;
+}
+
+/**
  * Fetch with automatic retry for transient HTTP errors.
  *
  * Uses exponential backoff with jitter for the following status codes:
@@ -351,7 +647,15 @@ function calculateBackoffDelay(
  * Only logs retry attempts - does not return any text to VSCode for display.
  */
 export async function fetchWithRetry(
-  url: string,
+  input: RequestInfo | URL,
+  options: FetchWithRetryOptions = {},
+): Promise<Response> {
+  return fetchWithRetryUsingFetch(fetch, input, options);
+}
+
+export async function fetchWithRetryUsingFetch(
+  fetcher: typeof fetch,
+  input: RequestInfo | URL,
   options: FetchWithRetryOptions = {},
 ): Promise<Response> {
   const { retryConfig, logger, connectionTimeoutMs, ...fetchOptions } = options;
@@ -368,6 +672,7 @@ export async function fetchWithRetry(
     retryConfig?.jitterFactor ?? DEFAULT_NORMAL_RETRY_CONFIG.jitterFactor;
   const connTimeout =
     connectionTimeoutMs ?? DEFAULT_NORMAL_TIMEOUT_CONFIG.connection;
+  const timeoutMessage = t('Timeout: Request aborted after {0}ms', connTimeout);
 
   let lastResponse: Response | undefined;
   let lastError: Error | undefined;
@@ -443,6 +748,7 @@ export async function fetchWithRetry(
     // Create timeout controller for connection timeout
     const timeoutController = new AbortController();
     const existingSignal = fetchOptions.signal;
+    let didTimeout = false;
 
     // Combine with existing signal if present
     throwIfAborted(existingSignal);
@@ -460,13 +766,12 @@ export async function fetchWithRetry(
     }
 
     const timeoutId = setTimeout(() => {
-      timeoutController.abort(
-        new Error(`Connection timeout after ${connTimeout}ms`),
-      );
+      didTimeout = true;
+      timeoutController.abort(new Error(timeoutMessage));
     }, connTimeout);
 
     try {
-      const response = await fetch(url, {
+      const response = await fetcher(input, {
         ...fetchOptions,
         signal: timeoutController.signal,
       });
@@ -518,6 +823,36 @@ export async function fetchWithRetry(
       clearTimeout(timeoutId);
       throwIfAborted(existingSignal);
 
+      // Normalize undici's `TypeError: terminated` (and other abort surfaces)
+      // when we know this request was cancelled due to our own timeout.
+      if (didTimeout) {
+        const timeoutError = createTimeoutError(timeoutMessage);
+        lastError = timeoutError;
+
+        if (attempt < maxRetries) {
+          const delayMs = calculateBackoffDelay(attempt, {
+            initialDelayMs,
+            maxDelayMs,
+            backoffMultiplier,
+            jitterFactor,
+          });
+
+          throwIfAborted(existingSignal);
+          logger?.retry(
+            attempt + 1,
+            maxRetries,
+            0,
+            delayMs,
+            undefined,
+            describeNetworkError(timeoutError),
+          );
+          await delay(delayMs, existingSignal);
+        }
+
+        attempt++;
+        continue;
+      }
+
       // Retryable connection/network errors.
       if (
         (error instanceof Error &&
@@ -537,7 +872,14 @@ export async function fetchWithRetry(
           });
 
           throwIfAborted(existingSignal);
-          logger?.retry(attempt + 1, maxRetries, 0, delayMs);
+          logger?.retry(
+            attempt + 1,
+            maxRetries,
+            0,
+            delayMs,
+            undefined,
+            describeNetworkError(error),
+          );
           await delay(delayMs, existingSignal);
         }
 
@@ -556,7 +898,7 @@ export async function fetchWithRetry(
 
   // All retries exhausted
   if (lastError) {
-    throw lastError;
+    throw normalizeTimeoutLikeError(lastError, timeoutMessage);
   }
   return lastResponse!;
 }
@@ -578,6 +920,10 @@ export async function* withIdleTimeout<T>(
   abortSignal?: AbortSignal,
 ): AsyncGenerator<T> {
   const iterator = source[Symbol.asyncIterator]();
+  const timeoutMessage = t(
+    'Response timeout: No data received for {0}ms',
+    responseTimeoutMs,
+  );
 
   type RaceResult =
     | { kind: 'value'; result: IteratorResult<T> }
@@ -620,7 +966,15 @@ export async function* withIdleTimeout<T>(
           races.push(abortRace);
         }
 
-        const result = await Promise.race(races);
+        let result: RaceResult;
+        try {
+          result = await Promise.race(races);
+        } catch (error) {
+          if (abortSignal?.aborted) {
+            throw abortReasonToError(abortSignal);
+          }
+          throw normalizeTimeoutLikeError(error, timeoutMessage);
+        }
 
         if (result.kind === 'abort') {
           if (abortSignal) {
@@ -630,12 +984,7 @@ export async function* withIdleTimeout<T>(
         }
 
         if (result.kind === 'timeout') {
-          throw new Error(
-            t(
-              'Response timeout: No data received for {0}ms',
-              responseTimeoutMs,
-            ),
-          );
+          throw createTimeoutError(timeoutMessage);
         }
 
         // Normal iteration result
@@ -708,11 +1057,38 @@ export function isImageMarker(part: vscode.LanguageModelDataPart): boolean {
   return part.mimeType.startsWith('image/');
 }
 
+export interface StatefulMarkerEnvelope<T extends object> {
+  identity: string;
+  data: T;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Create a stable identity hash for stateful markers.
+ *
+ * This is used to detect cross-provider or cross-model history and decide whether
+ * to restore raw state or fall back to text-only history.
+ */
+export function createStatefulMarkerIdentity(
+  provider: ProviderConfig,
+  model: ModelConfig,
+): string {
+  const normalizedBaseUrl = normalizeBaseUrlInput(provider.baseUrl);
+  const seed = `ucp_stateful_marker:v1|${provider.type}|${normalizedBaseUrl}|${model.id}`;
+  const hash = createHash('sha256').update(seed, 'utf8').digest('hex');
+  return `v1:${hash}`;
+}
+
 export function encodeStatefulMarkerPart<T extends object>(
-  raw: T,
+  identity: string,
+  data: T,
 ): vscode.LanguageModelDataPart {
+  const envelope: StatefulMarkerEnvelope<T> = { identity, data };
   const rawBase64: StatefulMarkerData = `[MODELID]\\${Buffer.from(
-    JSON.stringify(raw),
+    JSON.stringify(envelope),
   ).toString('base64')}`;
   return new vscode.LanguageModelDataPart(
     Buffer.from(rawBase64),
@@ -721,6 +1097,7 @@ export function encodeStatefulMarkerPart<T extends object>(
 }
 
 export function decodeStatefulMarkerPart<T extends object>(
+  expectedIdentity: string,
   modelId: string,
   part: vscode.LanguageModelDataPart,
 ): T {
@@ -735,7 +1112,158 @@ export function decodeStatefulMarkerPart<T extends object>(
     throw new Error('Invalid raw message stateful marker data format');
   }
   const rawJson = Buffer.from(match[1], 'base64').toString('utf-8');
-  return JSON.parse(rawJson) as T;
+  const decoded: unknown = JSON.parse(rawJson);
+
+  if (!isRecord(decoded)) {
+    throw new Error('Invalid raw message stateful marker data format');
+  }
+
+  const identity = decoded.identity;
+  const data = decoded.data;
+
+  if (typeof identity !== 'string' || !identity.trim()) {
+    throw new Error('Invalid raw message stateful marker identity');
+  }
+
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('Invalid raw message stateful marker data');
+  }
+
+  if (identity !== expectedIdentity) {
+    throw new Error('Stateful marker identity mismatch');
+  }
+
+  return data as T;
+}
+
+export function tryDecodeStatefulMarkerPart<T extends object>(
+  expectedIdentity: string,
+  modelId: string,
+  part: vscode.LanguageModelDataPart,
+): T | undefined {
+  try {
+    return decodeStatefulMarkerPart<T>(expectedIdentity, modelId, part);
+  } catch {
+    return undefined;
+  }
+}
+
+export function sanitizeMessagesForModelSwitch(
+  messages: readonly vscode.LanguageModelChatRequestMessage[],
+  options: { modelId: string; expectedIdentity: string },
+): vscode.LanguageModelChatRequestMessage[] {
+  const out: vscode.LanguageModelChatRequestMessage[] = [];
+
+  let round: vscode.LanguageModelChatRequestMessage[] = [];
+  let roundHasAssistant = false;
+
+  const flush = (): void => {
+    if (round.length === 0) {
+      roundHasAssistant = false;
+      return;
+    }
+
+    if (!roundHasAssistant) {
+      out.push(...round);
+      round = [];
+      roundHasAssistant = false;
+      return;
+    }
+
+    const isRoundValid = (): boolean => {
+      for (const message of round) {
+        if (message.role !== vscode.LanguageModelChatMessageRole.Assistant) {
+          continue;
+        }
+
+        const markerParts = message.content.filter(
+          (part): part is vscode.LanguageModelDataPart =>
+            part instanceof vscode.LanguageModelDataPart &&
+            part.mimeType === DataPartMimeTypes.StatefulMarker,
+        );
+
+        if (markerParts.length !== 1) {
+          return false;
+        }
+
+        const decoded = tryDecodeStatefulMarkerPart<object>(
+          options.expectedIdentity,
+          options.modelId,
+          markerParts[0],
+        );
+        if (!decoded) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
+    if (isRoundValid()) {
+      out.push(...round);
+      round = [];
+      roundHasAssistant = false;
+      return;
+    }
+
+    for (const message of round) {
+      if (
+        message.role !== vscode.LanguageModelChatMessageRole.User &&
+        message.role !== vscode.LanguageModelChatMessageRole.Assistant
+      ) {
+        out.push(message);
+        continue;
+      }
+
+      const textParts = message.content.filter(
+        (part): part is vscode.LanguageModelTextPart =>
+          part instanceof vscode.LanguageModelTextPart,
+      );
+
+      if (textParts.length === 0) {
+        continue;
+      }
+
+      out.push({
+        role: message.role,
+        name: message.name,
+        content: textParts,
+      });
+    }
+
+    round = [];
+    roundHasAssistant = false;
+  };
+
+  for (const message of messages) {
+    switch (message.role) {
+      case vscode.LanguageModelChatMessageRole.System:
+        flush();
+        out.push(message);
+        break;
+
+      case vscode.LanguageModelChatMessageRole.User:
+        if (roundHasAssistant) {
+          flush();
+        }
+        round.push(message);
+        break;
+
+      case vscode.LanguageModelChatMessageRole.Assistant:
+        roundHasAssistant = true;
+        round.push(message);
+        break;
+
+      default:
+        flush();
+        out.push(message);
+        break;
+    }
+  }
+
+  flush();
+
+  return out;
 }
 
 const SUPPORTED_BASE64_IMAGE_MIME_TYPES = [
@@ -1007,7 +1535,10 @@ export class StreamingThinkingTagParser {
       const maxPartialLen = '</thinking>'.length - 1;
       const safeLen = Math.max(0, this.buffer.length - maxPartialLen);
       if (safeLen > 0) {
-        segments.push({ type: 'thinking', content: this.buffer.slice(0, safeLen) });
+        segments.push({
+          type: 'thinking',
+          content: this.buffer.slice(0, safeLen),
+        });
         this.buffer = this.buffer.slice(safeLen);
       }
     }
@@ -1024,7 +1555,10 @@ export class StreamingThinkingTagParser {
     let openTag = '';
     let tagType: 'think' | 'thinking' | null = null;
 
-    if (thinkIndex !== -1 && (thinkingIndex === -1 || thinkIndex < thinkingIndex)) {
+    if (
+      thinkIndex !== -1 &&
+      (thinkingIndex === -1 || thinkIndex < thinkingIndex)
+    ) {
       openIndex = thinkIndex;
       openTag = '<think>';
       tagType = 'think';

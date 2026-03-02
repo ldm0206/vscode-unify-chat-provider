@@ -3,10 +3,10 @@ import * as vscode from 'vscode';
 import type { AuthTokenInfo } from '../../auth/types';
 import type { ProviderHttpLogger, RequestLogger } from '../../logger';
 import {
-  DEFAULT_CHAT_TIMEOUT_CONFIG,
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   FetchMode,
   buildOpencodeUserAgent,
+  resolveChatNetwork,
 } from '../../utils';
 import type { ModelConfig, PerformanceTrace } from '../../types';
 import { createCustomFetch, getToken } from '../utils';
@@ -77,15 +77,7 @@ function sanitizeCodexHeaders(headersInit: HeadersInit | undefined): Headers {
   return headers;
 }
 
-export class OpenAICodeXProvider extends OpenAIResponsesProvider {
-  private assertCodexAuth(): void {
-    if (this.config.auth?.method !== 'openai-codex') {
-      throw new Error(
-        'OpenAI CodeX provider requires auth method "openai-codex".',
-      );
-    }
-  }
-
+export class OpenAICodexProvider extends OpenAIResponsesProvider {
   protected override buildHeaders(
     sessionId: string,
     credential?: AuthTokenInfo,
@@ -131,21 +123,25 @@ export class OpenAICodeXProvider extends OpenAIResponsesProvider {
     abortSignal?: AbortSignal,
     mode: FetchMode = 'chat',
   ): OpenAI {
-    const fallbackTimeout =
-      mode === 'chat'
-        ? DEFAULT_CHAT_TIMEOUT_CONFIG
-        : DEFAULT_NORMAL_TIMEOUT_CONFIG;
+    const chatNetwork =
+      mode === 'chat' ? resolveChatNetwork(this.config) : undefined;
+    const effectiveTimeout =
+      chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
     const requestTimeoutMs = stream
-      ? (this.config.timeout?.connection ?? fallbackTimeout.connection)
-      : (this.config.timeout?.response ?? fallbackTimeout.response);
+      ? effectiveTimeout.connection
+      : effectiveTimeout.response;
 
     const token = getToken(credential);
 
     const baseFetch = createCustomFetch({
       connectionTimeoutMs: requestTimeoutMs,
       logger,
-      urlTransformer: rewriteToCodexEndpoint,
+      retryConfig: chatNetwork?.retry,
+      urlTransformer:
+        this.config.auth?.method === 'openai-codex'
+          ? rewriteToCodexEndpoint
+          : undefined,
       type: mode,
       abortSignal,
     });
@@ -175,13 +171,13 @@ export class OpenAICodeXProvider extends OpenAIResponsesProvider {
   override async getAvailableModels(
     _credential: AuthTokenInfo,
   ): Promise<ModelConfig[]> {
-    this.assertCodexAuth();
     return [
       { id: 'gpt-5.1-codex-max', maxOutputTokens: undefined },
       { id: 'gpt-5.1-codex-mini', maxOutputTokens: undefined },
       { id: 'gpt-5.2', maxOutputTokens: undefined },
       { id: 'gpt-5.2-codex', maxOutputTokens: undefined },
       { id: 'gpt-5.3-codex', maxOutputTokens: undefined },
+      { id: 'gpt-5.3-codex-spark', maxOutputTokens: undefined },
       { id: 'gpt-5.1-codex', maxOutputTokens: undefined },
     ];
   }
@@ -196,8 +192,6 @@ export class OpenAICodeXProvider extends OpenAIResponsesProvider {
     logger: RequestLogger,
     credential: AuthTokenInfo,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
-    this.assertCodexAuth();
-
     const systemTextParts: string[] = [];
     for (const message of messages) {
       if (message.role !== vscode.LanguageModelChatMessageRole.System) {

@@ -2,7 +2,7 @@
   "name": "vscode-unify-chat-provider",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "4.5.1",
+  "version": "4.9.4",
   "categories": [
     "AI",
     "Chat"
@@ -166,8 +166,16 @@
         "title": "%command.manageProviders.title%"
       },
       {
+        "command": "unifyChatProvider.manageBalances",
+        "title": "%command.manageBalances.title%"
+      },
+      {
         "command": "unifyChatProvider.refreshAllProvidersOfficialModels",
         "title": "%command.refreshAllProvidersOfficialModels.title%"
+      },
+      {
+        "command": "unifyChatProvider.refreshAllProvidersBalance",
+        "title": "%command.refreshAllProvidersBalance.title%"
       }
     ],
     "configuration": {
@@ -182,6 +190,103 @@
           "type": "boolean",
           "description": "%configuration.storeApiKeyInSettings.description%",
           "default": false
+        },
+        "unifyChatProvider.balanceRefreshIntervalMs": {
+          "type": "integer",
+          "description": "%configuration.balanceRefreshIntervalMs.description%",
+          "default": 60000,
+          "minimum": 1000
+        },
+        "unifyChatProvider.balanceThrottleWindowMs": {
+          "type": "integer",
+          "description": "%configuration.balanceThrottleWindowMs.description%",
+          "default": 10000,
+          "minimum": 0
+        },
+        "unifyChatProvider.balanceStatusBarIcon": {
+          "type": "string",
+          "description": "%configuration.balanceStatusBarIcon.description%",
+          "default": "$(credit-card)"
+        },
+        "unifyChatProvider.balanceWarning.enabled": {
+          "type": "boolean",
+          "description": "%configuration.balanceWarning.enabled.description%",
+          "default": true,
+          "order": 1
+        },
+        "unifyChatProvider.balanceWarning.timeThresholdDays": {
+          "type": "number",
+          "description": "%configuration.balanceWarning.timeThresholdDays.description%",
+          "default": 1,
+          "minimum": 0,
+          "order": 2
+        },
+        "unifyChatProvider.balanceWarning.amountThreshold": {
+          "type": "number",
+          "description": "%configuration.balanceWarning.amountThreshold.description%",
+          "default": 1,
+          "minimum": 0,
+          "order": 3
+        },
+        "unifyChatProvider.balanceWarning.tokenThresholdMillions": {
+          "type": "number",
+          "description": "%configuration.balanceWarning.tokenThresholdMillions.description%",
+          "default": 1,
+          "minimum": 0,
+          "order": 4
+        },
+        "unifyChatProvider.networkSettings": {
+          "type": "object",
+          "description": "%configuration.networkSettings.description%",
+          "properties": {
+            "timeout": {
+              "type": "object",
+              "description": "%configuration.networkSettings.timeout.description%",
+              "properties": {
+                "connection": {
+                  "type": "integer",
+                  "description": "%configuration.networkSettings.timeout.connection.description%",
+                  "default": 60000
+                },
+                "response": {
+                  "type": "integer",
+                  "description": "%configuration.networkSettings.timeout.response.description%",
+                  "default": 300000
+                }
+              }
+            },
+            "retry": {
+              "type": "object",
+              "description": "%configuration.networkSettings.retry.description%",
+              "properties": {
+                "maxRetries": {
+                  "type": "integer",
+                  "description": "%configuration.networkSettings.retry.maxRetries.description%",
+                  "default": 10
+                },
+                "initialDelayMs": {
+                  "type": "integer",
+                  "description": "%configuration.networkSettings.retry.initialDelayMs.description%",
+                  "default": 1000
+                },
+                "maxDelayMs": {
+                  "type": "integer",
+                  "description": "%configuration.networkSettings.retry.maxDelayMs.description%",
+                  "default": 60000
+                },
+                "backoffMultiplier": {
+                  "type": "number",
+                  "description": "%configuration.networkSettings.retry.backoffMultiplier.description%",
+                  "default": 2
+                },
+                "jitterFactor": {
+                  "type": "number",
+                  "description": "%configuration.networkSettings.retry.jitterFactor.description%",
+                  "default": 0.1
+                }
+              }
+            }
+          }
         },
         "unifyChatProvider.endpoints": {
           "type": "array",
@@ -235,6 +340,188 @@
                 "type": "string",
                 "description": "%configuration.endpoints.baseUrl.description%"
               },
+              "balanceProvider": {
+                "type": "object",
+                "description": "%configuration.endpoints.balanceProvider.description%",
+                "oneOf": [
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "none",
+                        "description": "%configuration.endpoints.balanceProvider.method.none.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "moonshot-ai",
+                        "description": "%configuration.endpoints.balanceProvider.method.moonshot.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "deepseek",
+                        "description": "%configuration.endpoints.balanceProvider.method.deepseek.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "openrouter",
+                        "description": "%configuration.endpoints.balanceProvider.method.openrouter.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "siliconflow",
+                        "description": "%configuration.endpoints.balanceProvider.method.siliconflow.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "aihubmix",
+                        "description": "%configuration.endpoints.balanceProvider.method.aihubmix.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "claude-relay-service",
+                        "description": "%configuration.endpoints.balanceProvider.method.claudeRelayService.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "kimi-code",
+                        "description": "%configuration.endpoints.balanceProvider.method.kimiCode.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "antigravity",
+                        "description": "%configuration.endpoints.balanceProvider.method.antigravity.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "gemini-cli",
+                        "description": "%configuration.endpoints.balanceProvider.method.geminiCli.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "codex",
+                        "description": "%configuration.endpoints.balanceProvider.method.codex.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "const": "newapi",
+                        "description": "%configuration.endpoints.balanceProvider.method.newapi.description%"
+                      },
+                      "userId": {
+                        "type": "string",
+                        "description": "%configuration.endpoints.balanceProvider.newapi.userId.description%"
+                      },
+                      "systemToken": {
+                        "type": "string",
+                        "description": "%configuration.endpoints.balanceProvider.newapi.systemToken.description%"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  }
+                ]
+              },
+              "contextCache": {
+                "type": "object",
+                "description": "%configuration.endpoints.contextCache.description%",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "%configuration.endpoints.contextCache.type.description%",
+                    "enum": [
+                      "only-free",
+                      "allow-paid"
+                    ],
+                    "default": "only-free",
+                    "enumDescriptions": [
+                      "%configuration.endpoints.contextCache.type.enumDescriptions.0%",
+                      "%configuration.endpoints.contextCache.type.enumDescriptions.1%"
+                    ]
+                  },
+                  "ttl": {
+                    "type": "integer",
+                    "description": "%configuration.endpoints.contextCache.ttl.description%",
+                    "minimum": 1
+                  }
+                }
+              },
               "extraHeaders": {
                 "type": "object",
                 "description": "%configuration.endpoints.extraHeaders.description%",
@@ -254,12 +541,43 @@
                   "connection": {
                     "type": "integer",
                     "description": "%configuration.endpoints.timeout.connection.description%",
-                    "default": 10000
+                    "default": 60000
                   },
                   "response": {
                     "type": "integer",
                     "description": "%configuration.endpoints.timeout.response.description%",
-                    "default": 120000
+                    "default": 300000
+                  }
+                }
+              },
+              "retry": {
+                "type": "object",
+                "description": "%configuration.endpoints.retry.description%",
+                "properties": {
+                  "maxRetries": {
+                    "type": "integer",
+                    "description": "%configuration.endpoints.retry.maxRetries.description%",
+                    "default": 10
+                  },
+                  "initialDelayMs": {
+                    "type": "integer",
+                    "description": "%configuration.endpoints.retry.initialDelayMs.description%",
+                    "default": 1000
+                  },
+                  "maxDelayMs": {
+                    "type": "integer",
+                    "description": "%configuration.endpoints.retry.maxDelayMs.description%",
+                    "default": 60000
+                  },
+                  "backoffMultiplier": {
+                    "type": "number",
+                    "description": "%configuration.endpoints.retry.backoffMultiplier.description%",
+                    "default": 2
+                  },
+                  "jitterFactor": {
+                    "type": "number",
+                    "description": "%configuration.endpoints.retry.jitterFactor.description%",
+                    "default": 0.1
                   }
                 }
               },
@@ -304,6 +622,31 @@
                           "type": "number",
                           "description": "%configuration.endpoints.models.maxOutputTokens.description%",
                           "default": 8192
+                        },
+                        "tokenizer": {
+                          "type": "string",
+                          "description": "%configuration.endpoints.models.tokenizer.description%",
+                          "default": "default",
+                          "enum": [
+                            "default",
+                            "conservative",
+                            "char4",
+                            "openai",
+                            "deepseek"
+                          ],
+                          "enumDescriptions": [
+                            "%configuration.endpoints.models.tokenizer.enumDescriptions.0%",
+                            "%configuration.endpoints.models.tokenizer.enumDescriptions.1%",
+                            "%configuration.endpoints.models.tokenizer.enumDescriptions.2%",
+                            "%configuration.endpoints.models.tokenizer.enumDescriptions.3%",
+                            "%configuration.endpoints.models.tokenizer.enumDescriptions.4%"
+                          ]
+                        },
+                        "tokenCountMultiplier": {
+                          "type": "number",
+                          "description": "%configuration.endpoints.models.tokenCountMultiplier.description%",
+                          "default": 1,
+                          "exclusiveMinimum": 0
                         },
                         "capabilities": {
                           "type": "object",
@@ -561,9 +904,11 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
     "@google/genai": "^1.40.0",
+    "@huggingface/tokenizers": "^0.1.1",
     "@iarna/toml": "^2.2.5",
     "@vscode/l10n": "^0.0.18",
     "ollama": "^0.6.3",
-    "openai": "^6.18.0"
+    "openai": "^6.18.0",
+    "tiktoken": "^1.0.22"
   }
 }

@@ -7,6 +7,70 @@ import { matchProvider } from '../client/utils';
  */
 const _WELL_KNOWN_MODELS = [
   {
+    id: 'doubao-seed-2-0-pro-260215',
+    overrides: ['doubao-seed-2-0-pro', 'doubao-seed-2.0-pro'],
+    name: 'Doubao Seed 2.0 Pro',
+    maxInputTokens: 256000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+      effort: 'high',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'doubao-seed-2-0-lite-260215',
+    overrides: ['doubao-seed-2-0-lite', 'doubao-seed-2.0-lite'],
+    name: 'Doubao Seed 2.0 Lite',
+    maxInputTokens: 256000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+      effort: 'high',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'doubao-seed-2-0-mini-260215',
+    overrides: ['doubao-seed-2-0-mini', 'doubao-seed-2.0-mini'],
+    name: 'Doubao Seed 2.0 Mini',
+    maxInputTokens: 256000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+      effort: 'high',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'doubao-seed-2-0-code-preview-260215',
+    overrides: ['doubao-seed-2-0-code', 'doubao-seed-2.0-code'],
+    name: 'Doubao Seed 2.0 Code Preview',
+    maxInputTokens: 256000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+      effort: 'high',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'doubao-seed-1-8-251228',
     overrides: ['doubao-seed-1.8'],
     name: 'Doubao Seed 1.8',
@@ -24,11 +88,18 @@ const _WELL_KNOWN_MODELS = [
   },
   {
     id: 'doubao-seed-code-preview-251028',
-    overrides: ['doubao-seed-code-preview', 'doubao-seed-code-preview-latest'],
+    overrides: [
+      'doubao-seed-code',
+      'doubao-seed-code-preview',
+      'doubao-seed-code-preview-latest',
+    ],
     name: 'Doubao Seed Code Preview',
     maxInputTokens: 256000,
     maxOutputTokens: 32000,
     stream: true,
+    thinking: {
+      type: 'enabled',
+    },
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -201,6 +272,22 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'claude-sonnet-4-6',
+    overrides: ['claude-sonnet-4.6', 'claude-sonnet-4-6-thinking'],
+    name: 'Claude Sonnet 4.6',
+    maxInputTokens: 200000,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'auto',
+      effort: 'high',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'claude-opus-4-5',
     overrides: ['claude-opus-4.5', 'claude-opus-4-5-thinking'],
     name: 'Claude Opus 4.5',
@@ -353,11 +440,28 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'gpt-5.3-codex-spark',
+    name: 'GPT-5.3-Codex-Spark',
+    maxInputTokens: 128000,
+    maxOutputTokens: 64000,
+    stream: true,
+    tokenizer: 'openai',
+    thinking: {
+      type: 'enabled',
+      effort: 'xhigh',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'gpt-5.3-codex',
     name: 'GPT-5.3-Codex',
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'xhigh',
@@ -373,6 +477,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'xhigh',
@@ -388,6 +493,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'xhigh',
@@ -403,6 +509,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'xhigh',
@@ -418,6 +525,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -429,6 +537,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -444,6 +553,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -459,6 +569,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -473,6 +584,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -487,6 +599,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -502,6 +615,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'xhigh',
@@ -517,6 +631,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -532,6 +647,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 128000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -546,6 +662,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 400000,
     maxOutputTokens: 272000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -561,6 +678,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -572,6 +690,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -583,6 +702,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -594,6 +714,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -605,6 +726,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 1047576,
     maxOutputTokens: 32768,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -616,6 +738,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 1047576,
     maxOutputTokens: 32768,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -627,6 +750,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 1047576,
     maxOutputTokens: 32768,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -636,7 +760,13 @@ const _WELL_KNOWN_MODELS = [
     id: 'gpt-oss-120b',
     overrides: [
       'gpt-oss:120b',
-      'openai/gpt-oss-120b',
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'openai/gpt-oss-120b',
+          maxOutputTokens: 4096,
+        },
+      },
       {
         matchers: ['api.cerebras.ai'],
         config: {
@@ -648,6 +778,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 131072,
     maxOutputTokens: 131072,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -659,11 +790,22 @@ const _WELL_KNOWN_MODELS = [
   },
   {
     id: 'gpt-oss-20b',
-    overrides: ['gpt-oss:20b', 'gpt-oss:latest', 'openai/gpt-oss-20b'],
+    overrides: [
+      'gpt-oss:20b',
+      'gpt-oss:latest',
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'openai/gpt-oss-20b',
+          maxOutputTokens: 4096,
+        },
+      },
+    ],
     name: 'GPT-OSS 20B',
     maxInputTokens: 131072,
     maxOutputTokens: 131072,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -679,6 +821,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -690,6 +833,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -705,6 +849,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: false,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -720,6 +865,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 65536,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -734,6 +880,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 32768,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -749,6 +896,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -764,6 +912,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -778,6 +927,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: false,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -793,6 +943,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
       effort: 'high',
@@ -808,6 +959,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -822,6 +974,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 100000,
     stream: true,
+    tokenizer: 'openai',
     thinking: {
       type: 'enabled',
     },
@@ -836,6 +989,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -847,6 +1001,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -858,6 +1013,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 8192,
     maxOutputTokens: 1024,
     stream: false,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -869,6 +1025,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -880,6 +1037,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 4096,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: true,
       imageInput: true,
@@ -891,6 +1049,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 4096,
     stream: false,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -902,6 +1061,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 8192,
     maxOutputTokens: 8192,
     stream: true,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -913,6 +1073,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 16385,
     maxOutputTokens: 4096,
     stream: false,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -924,6 +1085,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 4096,
     maxOutputTokens: 4096,
     stream: false,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -934,6 +1096,7 @@ const _WELL_KNOWN_MODELS = [
     name: 'babbage-002',
     maxOutputTokens: 16384,
     stream: false,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -944,14 +1107,84 @@ const _WELL_KNOWN_MODELS = [
     name: 'davinci-002',
     maxOutputTokens: 16384,
     stream: false,
+    tokenizer: 'openai',
     capabilities: {
       toolCalling: false,
       imageInput: false,
     },
   },
   {
+    id: 'MiniMax-M2.5',
+    overrides: [
+      'minimax-m2.5-free',
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'minimaxai/minimax-m2.5',
+          maxOutputTokens: 32768,
+        },
+      },
+      {
+        matchers: [
+          'dashscope.aliyuncs.com',
+          'dashscope-intl.aliyuncs.com',
+          'api-inference.modelscope.cn',
+        ],
+        config: {
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
+    name: 'MiniMax-M2.5',
+    maxInputTokens: 204800,
+    maxOutputTokens: 102400,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+    temperature: 1.0,
+  },
+  {
+    id: 'MiniMax-M2.5-highspeed',
+    name: 'MiniMax-M2.5-Highspeed',
+    maxInputTokens: 204800,
+    maxOutputTokens: 102400,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+    temperature: 1.0,
+  },
+  {
     id: 'MiniMax-M2.1',
-    overrides: ['minimax-m2.1-free', 'minimaxai/minimax-m2.1'],
+    overrides: [
+      'minimax-m2.1-free',
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'minimaxai/minimax-m2.1',
+          maxOutputTokens: 32768,
+        },
+      },
+      {
+        matchers: [
+          'dashscope.aliyuncs.com',
+          'dashscope-intl.aliyuncs.com',
+          'api-inference.modelscope.cn',
+        ],
+        config: {
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
     name: 'MiniMax-M2.1',
     maxInputTokens: 204800,
     maxOutputTokens: 102400,
@@ -966,8 +1199,8 @@ const _WELL_KNOWN_MODELS = [
     temperature: 1.0,
   },
   {
-    id: 'MiniMax-M2.1-lightning',
-    name: 'MiniMax-M2.1-Lightning',
+    id: 'MiniMax-M2.1-highspeed',
+    name: 'MiniMax-M2.1-Highspeed',
     maxInputTokens: 204800,
     maxOutputTokens: 102400,
     stream: true,
@@ -982,7 +1215,25 @@ const _WELL_KNOWN_MODELS = [
   },
   {
     id: 'MiniMax-M2',
-    overrides: ['minimaxai/minimax-m2'],
+    overrides: [
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'minimaxai/minimax-m2',
+          maxOutputTokens: 32768,
+        },
+      },
+      {
+        matchers: [
+          'dashscope.aliyuncs.com',
+          'dashscope-intl.aliyuncs.com',
+          'api-inference.modelscope.cn',
+        ],
+        config: {
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
     name: 'MiniMax-M2',
     maxInputTokens: 204800,
     maxOutputTokens: 102400,
@@ -1002,6 +1253,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1014,6 +1266,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 64000,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1030,6 +1283,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1045,6 +1299,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1060,6 +1315,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1076,6 +1332,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1092,6 +1349,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1107,6 +1365,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1119,6 +1378,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1132,6 +1392,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 32768,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1148,6 +1409,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 32768,
     stream: true,
+    tokenizer: 'deepseek',
     thinking: {
       type: 'enabled',
     },
@@ -1163,6 +1425,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1175,6 +1438,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1187,6 +1451,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 16384,
     maxOutputTokens: 4096,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1199,6 +1464,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 128000,
     maxOutputTokens: 8000,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: true,
       imageInput: false,
@@ -1211,6 +1477,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 4096,
     maxOutputTokens: 4096,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: false,
       imageInput: false,
@@ -1223,6 +1490,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 4096,
     maxOutputTokens: 4096,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: false,
       imageInput: true,
@@ -1235,6 +1503,7 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 4096,
     maxOutputTokens: 4096,
     stream: true,
+    tokenizer: 'deepseek',
     capabilities: {
       toolCalling: false,
       imageInput: true,
@@ -1249,6 +1518,19 @@ const _WELL_KNOWN_MODELS = [
         matchers: ['integrate.api.nvidia.com'],
         config: {
           id: 'moonshotai/kimi-k2.5',
+          maxOutputTokens: 32768,
+        },
+      },
+      {
+        matchers: [
+          'ark.cn-beijing.volces.com',
+          'ark.ap-southeast.bytepluses.com',
+          'dashscope.aliyuncs.com',
+          'dashscope-intl.aliyuncs.com',
+          'api-inference.modelscope.cn',
+        ],
+        config: {
+          maxOutputTokens: 32768,
         },
       },
     ],
@@ -1266,7 +1548,21 @@ const _WELL_KNOWN_MODELS = [
   },
   {
     id: 'kimi-k2-thinking',
-    overrides: ['moonshotai/kimi-k2-thinking'],
+    overrides: [
+      'moonshotai/kimi-k2-thinking',
+      {
+        matchers: [
+          'ark.cn-beijing.volces.com',
+          'ark.ap-southeast.bytepluses.com',
+          'dashscope.aliyuncs.com',
+          'dashscope-intl.aliyuncs.com',
+          'api-inference.modelscope.cn',
+        ],
+        config: {
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
     name: 'Kimi K2 Thinking',
     maxInputTokens: 256000,
     maxOutputTokens: 128000,
@@ -1351,6 +1647,99 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 0.6,
+  },
+  {
+    id: 'qwen3.5-plus',
+    name: 'Qwen3.5-Plus',
+    maxInputTokens: 1000000,
+    maxOutputTokens: 65536,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-flash',
+    name: 'Qwen3.5-Flash',
+    maxInputTokens: 1000000,
+    maxOutputTokens: 65536,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-397b-a17b',
+    overrides: [
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'qwen/qwen3.5-397b-a17b',
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
+    name: 'Qwen3.5-397B-A17B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-122b-a10b',
+    name: 'Qwen3.5-122B-A10B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-27b',
+    name: 'Qwen3.5-27B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-35b-a3b',
+    name: 'Qwen3.5-35B-A3B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
   },
   {
     id: 'qwen3-max-2026-01-23',
@@ -2312,10 +2701,53 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'glm-5',
+    overrides: [
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'z-ai/glm5',
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
+    name: 'GLM-5',
+    maxInputTokens: 200000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+  },
+  {
+    id: 'glm-5-code',
+    name: 'GLM-5-Code',
+    maxInputTokens: 200000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+  },
+  {
     id: 'glm-4.7',
     overrides: [
-      'z-ai/glm4.7',
       'glm-4.7-free',
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'z-ai/glm4.7',
+          maxOutputTokens: 32768,
+        },
+      },
       {
         matchers: ['api.cerebras.ai'],
         config: {
@@ -2716,11 +3148,26 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'gemini-3.1-pro-preview',
+    overrides: ['gemini-3.1-pro', 'gemini-3.1-pro-preview-customtools'],
+    name: 'Gemini 3.1 Pro Preview',
+    maxInputTokens: 1048576,
+    maxOutputTokens: 65535,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'gemini-3-pro-preview',
     overrides: ['gemini-3-pro'],
     name: 'Gemini 3 Pro Preview',
     maxInputTokens: 1048576,
-    maxOutputTokens: 65536,
+    maxOutputTokens: 65535,
     stream: true,
     thinking: {
       type: 'enabled',

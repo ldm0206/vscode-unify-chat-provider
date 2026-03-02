@@ -8,9 +8,10 @@ import { GoogleGeminiCLIProvider } from './google/gemini-cli-client';
 import { VertexAIProvider } from './google/vertex-ai-client';
 import { ProviderDefinition } from './interface';
 import { GitHubCopilotProvider } from './github-copilot/client';
+import { IFlowCLIProvider } from './iflow/client';
 import { OllamaProvider } from './ollama/client';
 import { OpenAIChatCompletionProvider } from './openai/chat-completion-client';
-import { OpenAICodeXProvider } from './openai/codex-client';
+import { OpenAICodexProvider } from './openai/codex-client';
 import { OpenAIResponsesProvider } from './openai/responses-client';
 import { QwenCodeProvider } from './qwen/qwen-code-client';
 import { Feature } from './types';
@@ -25,6 +26,7 @@ export type ProviderType =
   | 'google-gemini-cli'
   | 'github-copilot'
   | 'openai-chat-completion'
+  | 'iflow-cli'
   | 'qwen-code'
   | 'openai-codex'
   | 'openai-responses'
@@ -110,10 +112,17 @@ export const PROVIDER_TYPES: Record<ProviderType, ProviderDefinition> = {
   },
   'openai-codex': {
     type: 'openai-codex',
-    label: t('OpenAI CodeX'),
+    label: t('OpenAI Codex'),
     description: '/backend-api/codex/responses',
     category: 'Experimental',
-    class: OpenAICodeXProvider,
+    class: OpenAICodexProvider,
+  },
+  'iflow-cli': {
+    type: 'iflow-cli',
+    label: t('iFlow CLI'),
+    description: '/v1/chat/completions',
+    category: 'Experimental',
+    class: IFlowCLIProvider,
   },
 };
 
@@ -152,6 +161,12 @@ export enum FeatureId {
    */
   AnthropicFineGrainedToolStreaming = 'anthropic_fine-grained-tool-streaming',
   /**
+   * Enable 1M output token context beta for supported Claude models.
+   *
+   * @see https://docs.anthropic.com/en/docs/about-claude/models
+   */
+  AnthropicContext1M = 'anthropic_context-1m',
+  /**
    * @see https://community.openai.com/t/developer-role-not-accepted-for-o1-o1-mini-o3-mini/1110750/7
    */
   OpenAIOnlyMaxCompletionTokens = 'openai_only-max-completion-tokens',
@@ -170,8 +185,15 @@ export enum FeatureId {
   /**
    * @see https://platform.xiaomimimo.com/#/docs/api/text-generation/openai-api
    * @see https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+   * @see https://www.volcengine.com/docs/82379/1569618?lang=zh
    */
   OpenAIUseThinkingParam = 'openai_use-thinking-param',
+  /**
+   * Use `reasoning_effort` parameter in OpenAI-compatible Chat Completion APIs.
+   *
+   * @see https://www.volcengine.com/docs/82379/1569618?lang=zh
+   */
+  OpenAIUseReasoningEffortParam = 'openai_use-reasoning-effort-param',
   /**
    * Using both the unofficial `thinking` and the `reasoning` fields in the OpenAI Responses API.
    *
@@ -184,6 +206,10 @@ export enum FeatureId {
    * @see https://www.volcengine.com/docs/82379/1569618?lang=zh
    */
   OpenAIStripIncludeParam = 'openai_strip-include-param',
+  /**
+   * Enable VolcEngine / BytePlus context caching on OpenAI Responses API.
+   */
+  OpenAIUseVolcContextCaching = 'openai_use-volc-context-caching',
   /**
    * Use `top_k` parameter in OpenAI-compatible Chat Completion APIs.
    *
@@ -246,6 +272,12 @@ export enum FeatureId {
    */
   OpenAIUseReasoningSplitParam = 'openai_use-reasoning-split-param',
   /**
+   * Use provider base URL as-is for OpenAI-compatible Chat Completion APIs.
+   *
+   * Useful for gateway-style endpoints whose base path is already fully routed.
+   */
+  OpenAIUseRawBaseUrl = 'openai_use-raw-base-url',
+  /**
    * @see https://ai.google.dev/gemini-api/docs/thinking?hl=zh-cn#levels-budgets
    */
   GeminiUseThinkingLevel = 'gemini_use-thinking-level',
@@ -305,6 +337,17 @@ export const FEATURES: Record<FeatureId, Feature> = {
   [FeatureId.AnthropicFineGrainedToolStreaming]: {
     supportedFamilys: ['claude-'],
   },
+  [FeatureId.AnthropicContext1M]: {
+    supportedFamilys: [
+      'claude-opus-4-6',
+      'claude-opus-4.6',
+      'claude-sonnet-4-6',
+      'claude-sonnet-4.6',
+      'claude-sonnet-4-5',
+      'claude-sonnet-4.5',
+      'claude-sonnet-4',
+    ],
+  },
   [FeatureId.OpenAIOnlyMaxCompletionTokens]: {
     supportedProviders: ['api.cerebras.ai', 'opencode.ai'],
     supportedFamilys: [
@@ -336,6 +379,8 @@ export const FEATURES: Record<FeatureId, Feature> = {
   },
   [FeatureId.OpenAIOnlyMaxTokens]: {
     supportedProviders: [
+      'ark.cn-beijing.volces.com',
+      'ark.ap-southeast.bytepluses.com',
       'router.huggingface.co',
       'portal.qwen.ai',
       'api.siliconflow.cn',
@@ -377,16 +422,27 @@ export const FEATURES: Record<FeatureId, Feature> = {
   },
   [FeatureId.OpenAIUseThinkingParam]: {
     supportedProviders: [
+      'ark.cn-beijing.volces.com',
+      'ark.ap-southeast.bytepluses.com',
       'api.deepseek.com',
       'api.xiaomimimo.com',
       'open.bigmodel.cn',
       'api.z.ai',
     ],
     customCheckers: [
-      // Checker for iFlow GLM models:
-      (model, provider) =>
-        matchProvider(provider.baseUrl, 'apis.iflow.cn') &&
-        matchModelFamily(model.family ?? getBaseModelId(model.id), ['glm-']),
+      // Checker for iFlow enable_thinking models:
+      (model, provider) => {
+        if (!matchProvider(provider.baseUrl, 'apis.iflow.cn')) {
+          return false;
+        }
+        const family = (model.family ?? getBaseModelId(model.id)).toLowerCase();
+        return (
+          family.startsWith('glm-') ||
+          family === 'qwen3-max-preview' ||
+          family === 'deepseek-v3.2' ||
+          family === 'deepseek-v3.1'
+        );
+      },
       // Checker for Nvidia GLM models:
       (model, provider) =>
         matchProvider(provider.baseUrl, 'integrate.api.nvidia.com') &&
@@ -401,10 +457,22 @@ export const FEATURES: Record<FeatureId, Feature> = {
       'ark.ap-southeast.bytepluses.com',
     ],
   },
+  [FeatureId.OpenAIUseReasoningEffortParam]: {
+    supportedProviders: [
+      'ark.cn-beijing.volces.com',
+      'ark.ap-southeast.bytepluses.com',
+    ],
+  },
   [FeatureId.OpenAIStripIncludeParam]: {
     supportedProviders: [
       'ark.cn-beijing.volces.com',
       'ark.ap-southeast.bytepluses.com',
+    ],
+  },
+  [FeatureId.OpenAIUseVolcContextCaching]: {
+    supportedProviders: [
+      'ark.cn-beijing.volces.com/api/v3*',
+      'ark.ap-southeast.bytepluses.com/api/v3*',
     ],
   },
   [FeatureId.OpenAIUseTopK]: {
@@ -443,6 +511,8 @@ export const FEATURES: Record<FeatureId, Feature> = {
   },
   [FeatureId.OpenAIUseReasoningContent]: {
     supportedProviders: [
+      'ark.cn-beijing.volces.com',
+      'ark.ap-southeast.bytepluses.com',
       'api.deepseek.com',
       'api.xiaomimimo.com',
       'open.bigmodel.cn',
@@ -458,10 +528,19 @@ export const FEATURES: Record<FeatureId, Feature> = {
       'api.longcat.chat',
     ],
     customCheckers: [
-      // Checker for iFlow GLM models:
-      (model, provider) =>
-        matchProvider(provider.baseUrl, 'apis.iflow.cn') &&
-        matchModelFamily(model.family ?? getBaseModelId(model.id), ['glm-']),
+      // Checker for iFlow enable_thinking models:
+      (model, provider) => {
+        if (!matchProvider(provider.baseUrl, 'apis.iflow.cn')) {
+          return false;
+        }
+        const family = (model.family ?? getBaseModelId(model.id)).toLowerCase();
+        return (
+          family.startsWith('glm-') ||
+          family === 'qwen3-max-preview' ||
+          family === 'deepseek-v3.2' ||
+          family === 'deepseek-v3.1'
+        );
+      },
       // Checker for Nvidia GLM models:
       (model, provider) =>
         matchProvider(provider.baseUrl, 'integrate.api.nvidia.com') &&
@@ -479,10 +558,13 @@ export const FEATURES: Record<FeatureId, Feature> = {
         matchModelFamily(model.family ?? getBaseModelId(model.id), [
           'zai-glm-4.7',
         ]),
-      // Checker for iFlow GLM 4.7 model:
+      // Checker for iFlow GLM 4.7 / GLM 5 model:
       (model, provider) =>
         matchProvider(provider.baseUrl, 'apis.iflow.cn') &&
-        matchModelFamily(model.family ?? getBaseModelId(model.id), ['glm-4.7']),
+        matchModelFamily(model.family ?? getBaseModelId(model.id), [
+          'glm-4.7',
+          'glm-5',
+        ]),
       // Checker for Nvidia GLM 4.7 model:
       (model, provider) =>
         matchProvider(provider.baseUrl, 'integrate.api.nvidia.com') &&
@@ -506,6 +588,9 @@ export const FEATURES: Record<FeatureId, Feature> = {
           'minimaxai/minimax-',
         ]),
     ],
+  },
+  [FeatureId.OpenAIUseRawBaseUrl]: {
+    supportedProviders: ['api.kilo.ai/api/gateway'],
   },
   [FeatureId.GeminiUseThinkingLevel]: {
     supportedFamilys: ['gemini-3-'],

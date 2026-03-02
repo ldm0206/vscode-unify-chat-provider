@@ -1,6 +1,7 @@
 import type { ConfigStore } from '../../config-store';
 import type { ProviderType } from '../../client/definitions';
 import { ProviderConfig, ModelConfig, TimeoutConfig } from '../../types';
+import type { RetryConfig } from '../../utils';
 import type { WellKnownProviderConfig } from '../../well-known/providers';
 import type { OfficialModelsFetchState } from '../../official-models-manager';
 import type { SecretStore } from '../../secret';
@@ -15,6 +16,10 @@ export interface UiContext {
 
 export interface ProviderListRoute {
   kind: 'providerList';
+}
+
+export interface BalanceProviderListRoute {
+  kind: 'balanceProviderList';
 }
 
 export interface ProviderFormRoute {
@@ -92,6 +97,7 @@ export interface ModelSelectionRoute {
 export interface TimeoutFormRoute {
   kind: 'timeoutForm';
   timeout: TimeoutConfig;
+  retry: RetryConfig;
   draft: ProviderFormDraft;
 }
 
@@ -103,6 +109,7 @@ export interface ProviderDraftFormRoute {
   kind: 'providerDraftForm';
   draft: ProviderFormDraft;
   original: ProviderFormDraft;
+  skipSecretCleanupOnDiscard?: boolean;
 }
 
 export interface ImportProviderConfigArrayRoute {
@@ -126,6 +133,7 @@ export interface ImportModelConfigArrayRoute {
 
 export type UiRoute =
   | ProviderListRoute
+  | BalanceProviderListRoute
   | ProviderFormRoute
   | WellKnownProviderListRoute
   | WellKnownProviderNameRoute

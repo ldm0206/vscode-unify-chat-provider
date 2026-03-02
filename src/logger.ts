@@ -31,7 +31,8 @@ function getChannel(): vscode.LogOutputChannel {
 
 function isVerboseEnabled(): boolean {
   const config = vscode.workspace.getConfiguration('unifyChatProvider');
-  const verbose = config.get<unknown>('verbose', false);
+  const inspection = config.inspect<unknown>('verbose');
+  const verbose = inspection?.globalValue;
   return typeof verbose === 'boolean' ? verbose : false;
 }
 
@@ -158,6 +159,7 @@ export interface ProviderHttpLogger {
     statusCode: number,
     delayMs: number,
     responseBody?: string,
+    errorDetail?: string,
   ): void;
 }
 
@@ -438,13 +440,26 @@ export class RequestLogger implements ProviderHttpLogger {
     statusCode: number,
     delayMs: number,
     responseBody?: string,
+    errorDetail?: string,
   ): void {
+    const reason =
+      statusCode === 0 && errorDetail ? errorDetail : `HTTP ${statusCode}`;
     this.ch.warn(
-      `[${this.requestId}] ⟳ Retry ${attempt}/${maxRetries} after HTTP ${statusCode}, waiting ${delayMs}ms`,
+      `[${this.requestId}] ⟳ Retry ${attempt}/${maxRetries} after ${reason}, waiting ${delayMs}ms`,
     );
     if (responseBody) {
       this.ch.warn(`[${this.requestId}] Response Body: ${responseBody}`);
     }
+  }
+
+  /**
+   * Log a retry attempt due to an empty stream response.
+   * Always logged regardless of verbose setting.
+   */
+  emptyStreamRetry(attempt: number, maxRetries: number, delayMs: number): void {
+    this.ch.warn(
+      `[${this.requestId}] ⟳ Retry ${attempt}/${maxRetries} after empty stream (200 OK but no data), waiting ${delayMs}ms`,
+    );
   }
 
   /**
@@ -559,9 +574,12 @@ export class SimpleHttpLogger implements ProviderHttpLogger {
     statusCode: number,
     delayMs: number,
     responseBody?: string,
+    errorDetail?: string,
   ): void {
+    const reason =
+      statusCode === 0 && errorDetail ? errorDetail : `HTTP ${statusCode}`;
     this.ch.warn(
-      `[${this.requestId}] ⟳ Retry ${attempt}/${maxRetries} after HTTP ${statusCode}, waiting ${delayMs}ms`,
+      `[${this.requestId}] ⟳ Retry ${attempt}/${maxRetries} after ${reason}, waiting ${delayMs}ms`,
     );
     if (responseBody) {
       this.ch.warn(`[${this.requestId}] Response Body: ${responseBody}`);

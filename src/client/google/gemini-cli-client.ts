@@ -10,12 +10,14 @@ import {
 } from './code-assist-client';
 
 const GEMINI_3_TIER_SUFFIX = /-(minimal|low|medium|high)$/i;
+const GEMINI_3_PREVIEW_SUFFIX = /-preview(?:-customtools)?$/i;
 
 export class GoogleGeminiCLIProvider extends GoogleCodeAssistProvider {
   protected readonly codeAssistName = 'Gemini CLI';
   protected readonly codeAssistHeaders = GEMINI_CLI_API_HEADERS;
   protected readonly codeAssistHeaderStyle = 'gemini-cli';
-  protected readonly codeAssistEndpointFallbacks = GEMINI_CLI_ENDPOINT_FALLBACKS;
+  protected readonly codeAssistEndpointFallbacks =
+    GEMINI_CLI_ENDPOINT_FALLBACKS;
 
   /**
    * Override to support google-gemini-oauth authentication method.
@@ -83,21 +85,30 @@ export class GoogleGeminiCLIProvider extends GoogleCodeAssistProvider {
       }
     }
 
-    const withPreview = withoutTier.toLowerCase().endsWith('-preview')
+    const withPreview = GEMINI_3_PREVIEW_SUFFIX.test(withoutTier)
       ? withoutTier
       : `${withoutTier}-preview`;
+    // Sync rule: preserve customtools IDs like "*-preview-customtools";
+    // never append an extra "-preview" for them.
 
     const effectiveLevel: Gemini3ThinkingLevel =
       preferredGemini3ThinkingLevel ?? tier ?? 'low';
 
-    return { requestModelId: withPreview, gemini3ThinkingLevel: effectiveLevel };
+    return {
+      requestModelId: withPreview,
+      gemini3ThinkingLevel: effectiveLevel,
+    };
   }
 
   override async getAvailableModels(
     _credential: AuthTokenInfo,
   ): Promise<ModelConfig[]> {
     this.validateAuth();
+    // Sync rule: this list should match local canonical model IDs for Gemini CLI.
+    // Do NOT import Antigravity-prefixed or proxy-specific resolver aliases.
     return [
+      { id: 'gemini-3.1-pro-preview' },
+      { id: 'gemini-3.1-pro-preview-customtools' },
       { id: 'gemini-3-pro-preview' },
       { id: 'gemini-3-flash-preview' },
       { id: 'gemini-2.5-pro' },

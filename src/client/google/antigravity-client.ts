@@ -14,7 +14,8 @@ export class GoogleAntigravityProvider extends GoogleCodeAssistProvider {
   protected readonly codeAssistName = 'Antigravity';
   protected readonly codeAssistHeaders = CODE_ASSIST_HEADERS;
   protected readonly codeAssistHeaderStyle = 'antigravity';
-  protected readonly codeAssistEndpointFallbacks = CODE_ASSIST_ENDPOINT_FALLBACKS;
+  protected readonly codeAssistEndpointFallbacks =
+    CODE_ASSIST_ENDPOINT_FALLBACKS;
 
   protected resolveModelForRequest(
     modelId: string,
@@ -42,11 +43,14 @@ export class GoogleAntigravityProvider extends GoogleCodeAssistProvider {
     _credential: AuthTokenInfo,
   ): Promise<ModelConfig[]> {
     this.validateAuth();
+    // Sync rule: keep canonical model IDs used by this project config.
+    // Do NOT copy reference project's "antigravity-*" prefixed IDs directly.
     return [
+      { id: 'gemini-3.1-pro' },
       { id: 'gemini-3-pro' },
       { id: 'gemini-3-flash' },
-      { id: 'claude-sonnet-4-5' },
-      { id: 'claude-opus-4-5' },
+      { id: 'claude-sonnet-4-6' },
+      { id: 'claude-opus-4-6' },
     ];
   }
 }

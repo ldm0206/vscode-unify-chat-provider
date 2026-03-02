@@ -23,15 +23,19 @@ import type { ProviderHttpLogger } from '../../logger';
 import {
   bodyInitToLoggableValue,
   decodeStatefulMarkerPart,
-  DEFAULT_CHAT_TIMEOUT_CONFIG,
+  createStatefulMarkerIdentity,
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   FetchMode,
   encodeStatefulMarkerPart,
+  fetchWithRetryUsingFetch,
   headersInitToRecord,
   isCacheControlMarker,
   isImageMarker,
   isInternalMarker,
   normalizeImageMimeType,
+  resolveChatNetwork,
+  sanitizeMessagesForModelSwitch,
+  type RetryConfig,
   withIdleTimeout,
 } from '../../utils';
 import { getBaseModelId } from '../../model-id-utils';
@@ -102,14 +106,14 @@ export class GoogleAIStudioProvider implements ApiProvider {
     credential?: AuthTokenInfo,
     mode: FetchMode = 'chat',
   ): GoogleGenAI {
-    const fallbackTimeout =
-      mode === 'chat'
-        ? DEFAULT_CHAT_TIMEOUT_CONFIG
-        : DEFAULT_NORMAL_TIMEOUT_CONFIG;
+    const chatNetwork =
+      mode === 'chat' ? resolveChatNetwork(this.config) : undefined;
+    const effectiveTimeout =
+      chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
     const requestTimeoutMs = streamEnabled
-      ? (this.config.timeout?.connection ?? fallbackTimeout.connection)
-      : (this.config.timeout?.response ?? fallbackTimeout.response);
+      ? effectiveTimeout.connection
+      : effectiveTimeout.response;
 
     const credentialValue = getToken(credential);
 
@@ -243,6 +247,7 @@ export class GoogleAIStudioProvider implements ApiProvider {
   protected convertMessages(
     encodedModelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
+    expectedIdentity: string,
   ): { systemInstruction?: ContentUnion; contents: Content[] } {
     const systemParts: Part[] = [];
     let contents: Content[] = [];
@@ -274,14 +279,16 @@ export class GoogleAIStudioProvider implements ApiProvider {
         }
 
         case vscode.LanguageModelChatMessageRole.Assistant: {
-          const rawPart = msg.content.find(
-            (v) => v instanceof vscode.LanguageModelDataPart,
-          ) as vscode.LanguageModelDataPart | undefined;
-          if (rawPart) {
+          const markerParts = msg.content.filter(
+            (v): v is vscode.LanguageModelDataPart =>
+              v instanceof vscode.LanguageModelDataPart && isInternalMarker(v),
+          );
+          if (markerParts.length === 1) {
             try {
               const raw = decodeStatefulMarkerPart<Content[]>(
+                expectedIdentity,
                 encodedModelId,
-                rawPart,
+                markerParts[0],
               );
               for (const content of raw) {
                 contents.push(content);
@@ -697,9 +704,16 @@ export class GoogleAIStudioProvider implements ApiProvider {
       model,
     );
 
+    const expectedIdentity = createStatefulMarkerIdentity(this.config, model);
+    const sanitizedMessages = sanitizeMessagesForModelSwitch(messages, {
+      modelId: encodedModelId,
+      expectedIdentity,
+    });
+
     const { systemInstruction, contents } = this.convertMessages(
       encodedModelId,
-      messages,
+      sanitizedMessages,
+      expectedIdentity,
     );
     const tools = this.convertTools(options.tools);
     const functionCallingConfig = this.buildFunctionCallingConfig(
@@ -741,9 +755,13 @@ export class GoogleAIStudioProvider implements ApiProvider {
     performanceTrace.ttf = Date.now() - performanceTrace.tts;
 
     try {
+      const chatNetwork = resolveChatNetwork(this.config);
+      const requestTimeoutMs = streamEnabled
+        ? chatNetwork.timeout.connection
+        : chatNetwork.timeout.response;
+
       if (streamEnabled) {
-        const responseTimeoutMs =
-          this.config.timeout?.response ?? DEFAULT_CHAT_TIMEOUT_CONFIG.response;
+        const responseTimeoutMs = chatNetwork.timeout.response;
 
         const stream = await withGoogleFetchLogger(logger, async () => {
           return client.models.generateContentStream({
@@ -751,7 +769,7 @@ export class GoogleAIStudioProvider implements ApiProvider {
             contents,
             config: generateConfig,
           });
-        });
+        }, { connectionTimeoutMs: requestTimeoutMs, retryConfig: chatNetwork.retry });
 
         const timedStream = withIdleTimeout(
           stream,
@@ -764,6 +782,7 @@ export class GoogleAIStudioProvider implements ApiProvider {
           token,
           logger,
           performanceTrace,
+          expectedIdentity,
         );
       } else {
         const data = await withGoogleFetchLogger(logger, async () => {
@@ -772,8 +791,8 @@ export class GoogleAIStudioProvider implements ApiProvider {
             contents,
             config: generateConfig,
           });
-        });
-        yield* this.parseMessage(data, performanceTrace, logger);
+        }, { connectionTimeoutMs: requestTimeoutMs, retryConfig: chatNetwork.retry });
+        yield* this.parseMessage(data, performanceTrace, logger, expectedIdentity);
       }
     } finally {
       cancellationListener.dispose();
@@ -784,6 +803,7 @@ export class GoogleAIStudioProvider implements ApiProvider {
     message: GenerateContentResponse,
     performanceTrace: PerformanceTrace,
     logger: RequestLogger,
+    expectedIdentity: string,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     logger.providerResponseChunk(JSON.stringify(message));
 
@@ -830,7 +850,10 @@ export class GoogleAIStudioProvider implements ApiProvider {
       yield new vscode.LanguageModelThinkingPart('', undefined, metadata);
     }
 
-    yield encodeStatefulMarkerPart<Content[]>(content ? [content] : []);
+    yield encodeStatefulMarkerPart<Content[]>(
+      expectedIdentity,
+      content ? [content] : [],
+    );
 
     if (message.usageMetadata) {
       this.processUsage(message.usageMetadata, performanceTrace, logger);
@@ -842,6 +865,7 @@ export class GoogleAIStudioProvider implements ApiProvider {
     token: vscode.CancellationToken,
     logger: RequestLogger,
     performanceTrace: PerformanceTrace,
+    expectedIdentity: string,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     const recordFirstToken = createFirstTokenRecorder(performanceTrace);
 
@@ -908,14 +932,17 @@ export class GoogleAIStudioProvider implements ApiProvider {
       outputContents.length > 0 &&
       outputContents.every((content) => content.role !== undefined)
     ) {
-      yield encodeStatefulMarkerPart<Content[]>(outputContents);
+      yield encodeStatefulMarkerPart<Content[]>(expectedIdentity, outputContents);
     } else {
-      yield encodeStatefulMarkerPart<Content[]>([
-        {
-          role: 'model',
-          parts: [],
-        } as Content,
-      ]);
+      yield encodeStatefulMarkerPart<Content[]>(
+        expectedIdentity,
+        [
+          {
+            role: 'model',
+            parts: [],
+          } as Content,
+        ],
+      );
     }
 
     if (lastUsage) {
@@ -974,6 +1001,8 @@ export class GoogleAIStudioProvider implements ApiProvider {
 
 type FetchLoggerContext = {
   logger: ProviderHttpLogger;
+  connectionTimeoutMs?: number;
+  retryConfig?: RetryConfig;
 };
 
 const fetchLoggerContext = new AsyncLocalStorage<FetchLoggerContext>();
@@ -1043,7 +1072,24 @@ function ensureInstalled(): void {
       body: bodyInitToLoggableValue(init?.body, requestHeaders),
     });
 
-    const response = await baseFetch(input, init);
+    const upstreamSignal: AbortSignal | undefined =
+      init?.signal ??
+      (typeof Request !== 'undefined' && input instanceof Request
+        ? input.signal
+        : undefined);
+
+    const useRetry =
+      ctx.retryConfig !== undefined || ctx.connectionTimeoutMs !== undefined;
+
+    const response = useRetry
+      ? await fetchWithRetryUsingFetch(baseFetch, input, {
+          ...(init ?? {}),
+          signal: upstreamSignal,
+          logger: ctx.logger,
+          retryConfig: ctx.retryConfig,
+          connectionTimeoutMs: ctx.connectionTimeoutMs,
+        })
+      : await baseFetch(input, init);
 
     ctx.logger.providerResponseMeta(response);
 
@@ -1076,7 +1122,8 @@ function ensureInstalled(): void {
 async function withGoogleFetchLogger<T>(
   logger: ProviderHttpLogger,
   fn: () => Promise<T>,
+  options?: Pick<FetchLoggerContext, 'connectionTimeoutMs' | 'retryConfig'>,
 ): Promise<T> {
   ensureInstalled();
-  return fetchLoggerContext.run({ logger }, fn);
+  return fetchLoggerContext.run({ logger, ...options }, fn);
 }

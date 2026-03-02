@@ -12,7 +12,7 @@ import OpenAI from 'openai';
 import type { AuthTokenInfo } from '../../auth/types';
 import {
   decodeStatefulMarkerPart,
-  DEFAULT_CHAT_TIMEOUT_CONFIG,
+  createStatefulMarkerIdentity,
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   encodeStatefulMarkerPart,
   FetchMode,
@@ -20,6 +20,9 @@ import {
   isImageMarker,
   isInternalMarker,
   normalizeImageMimeType,
+  resolveContextCacheConfig,
+  resolveChatNetwork,
+  sanitizeMessagesForModelSwitch,
   withIdleTimeout,
 } from '../../utils';
 import {
@@ -55,6 +58,15 @@ import {
 import { getBaseModelId } from '../../model-id-utils';
 import { randomUUID } from 'crypto';
 import { ProviderConfig, ModelConfig, PerformanceTrace } from '../../types';
+
+const VOLC_CONTEXT_CACHE_MAX_TTL_SECONDS = 604_800;
+
+type ConvertedMessagesResult = {
+  input: ResponseInput;
+  sessionId: string;
+  previousResponseId?: string;
+  inputAfterPreviousResponse?: ResponseInputItem[];
+};
 
 export class OpenAIResponsesProvider implements ApiProvider {
   protected readonly baseUrl: string;
@@ -104,14 +116,14 @@ export class OpenAIResponsesProvider implements ApiProvider {
     abortSignal?: AbortSignal,
     mode: FetchMode = 'chat',
   ): OpenAI {
-    const fallbackTimeout =
-      mode === 'chat'
-        ? DEFAULT_CHAT_TIMEOUT_CONFIG
-        : DEFAULT_NORMAL_TIMEOUT_CONFIG;
+    const chatNetwork =
+      mode === 'chat' ? resolveChatNetwork(this.config) : undefined;
+    const effectiveTimeout =
+      chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
     const requestTimeoutMs = stream
-      ? (this.config.timeout?.connection ?? fallbackTimeout.connection)
-      : (this.config.timeout?.response ?? fallbackTimeout.response);
+      ? effectiveTimeout.connection
+      : effectiveTimeout.response;
 
     const token = getToken(credential);
 
@@ -122,6 +134,7 @@ export class OpenAIResponsesProvider implements ApiProvider {
       fetch: createCustomFetch({
         connectionTimeoutMs: requestTimeoutMs,
         logger,
+        retryConfig: chatNetwork?.retry,
         type: mode,
         abortSignal,
       }),
@@ -135,10 +148,20 @@ export class OpenAIResponsesProvider implements ApiProvider {
   private convertMessages(
     encodedModelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
-  ): { input: ResponseInput; sessionId: string } {
+    expectedIdentity: string,
+    enableVolcContextCacheLinking: boolean,
+  ): ConvertedMessagesResult {
     let firstSessionId: string | null = null;
+    let latestResponseId: string | undefined;
+    let outItemsAfterLatestResponse: ResponseInputItem[] = [];
     const outItems: ResponseInputItem[] = [];
     const rawMap = new Map<ResponseInputItem, ResponseInputItem[]>();
+    const appendOutItem = (item: ResponseInputItem): void => {
+      outItems.push(item);
+      if (latestResponseId !== undefined) {
+        outItemsAfterLatestResponse.push(item);
+      }
+    };
 
     for (const msg of messages) {
       switch (msg.role) {
@@ -147,7 +170,7 @@ export class OpenAIResponsesProvider implements ApiProvider {
             const parts = this.convertPart(msg.role, part) as
               | EasyInputMessage
               | undefined;
-            if (parts) outItems.push(parts);
+            if (parts) appendOutItem(parts);
           }
           break;
 
@@ -157,24 +180,32 @@ export class OpenAIResponsesProvider implements ApiProvider {
               | EasyInputMessage
               | ResponseInputItem.FunctionCallOutput
               | undefined;
-            if (parts) outItems.push(parts);
+            if (parts) appendOutItem(parts);
           }
           break;
 
         case vscode.LanguageModelChatMessageRole.Assistant:
           {
-            const rawPart = msg.content.find(
-              (v) => v instanceof vscode.LanguageModelDataPart,
-            ) as vscode.LanguageModelDataPart | undefined;
-            if (rawPart) {
+            const markerParts = msg.content.filter(
+              (v): v is vscode.LanguageModelDataPart =>
+                v instanceof vscode.LanguageModelDataPart &&
+                isInternalMarker(v),
+            );
+
+            if (markerParts.length === 1) {
               try {
-                const { data: raw, sessionId } =
+                const { data: raw, sessionId, responseId } =
                   decodeStatefulMarkerPart<OpenAIResponsesMarkerData>(
+                    expectedIdentity,
                     encodedModelId,
-                    rawPart,
+                    markerParts[0],
                   );
                 if (firstSessionId == null && sessionId) {
                   firstSessionId = sessionId;
+                }
+                if (enableVolcContextCacheLinking) {
+                  latestResponseId = responseId;
+                  outItemsAfterLatestResponse = [];
                 }
                 const item: EasyInputMessage = {
                   role: 'assistant',
@@ -183,16 +214,18 @@ export class OpenAIResponsesProvider implements ApiProvider {
                 rawMap.set(item, raw);
                 outItems.push(item);
                 break;
-              } catch (error) {}
-            } else {
-              for (const part of msg.content) {
-                const parts = this.convertPart(msg.role, part) as
-                  | EasyInputMessage
-                  | ResponseFunctionToolCall
-                  | ResponseReasoningItem
-                  | undefined;
-                if (parts) outItems.push(parts);
+              } catch {
+                // fall back to best-effort conversion
               }
+            }
+
+            for (const part of msg.content) {
+              const parts = this.convertPart(msg.role, part) as
+                | EasyInputMessage
+                | ResponseFunctionToolCall
+                | ResponseReasoningItem
+                | undefined;
+              if (parts) appendOutItem(parts);
             }
           }
           break;
@@ -209,10 +242,15 @@ export class OpenAIResponsesProvider implements ApiProvider {
       outItems.splice(index, 1, ...raw);
     }
 
-    return {
+    const result: ConvertedMessagesResult = {
       input: outItems,
       sessionId: firstSessionId ?? this.generateSessionId(),
     };
+    if (enableVolcContextCacheLinking && latestResponseId !== undefined) {
+      result.previousResponseId = latestResponseId;
+      result.inputAfterPreviousResponse = outItemsAfterLatestResponse;
+    }
+    return result;
   }
 
   convertPart(
@@ -238,13 +276,37 @@ export class OpenAIResponsesProvider implements ApiProvider {
 
     if (part instanceof vscode.LanguageModelTextPart) {
       if (part.value.trim()) {
-        const content = { type: 'input_text', text: part.value } as const;
-        return role === 'from_tool_result'
-          ? [content]
-          : {
-              role: roleStr,
-              content: [content],
+        switch (role) {
+          case vscode.LanguageModelChatMessageRole.Assistant:
+            return {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'output_text' as 'input_text',
+                  text: part.value,
+                },
+              ],
             };
+
+          case 'from_tool_result':
+            return [
+              {
+                type: 'input_text',
+                text: part.value,
+              },
+            ];
+
+          default:
+            return {
+              role: roleStr,
+              content: [
+                {
+                  type: 'input_text',
+                  text: part.value,
+                },
+              ],
+            };
+        }
       } else {
         return undefined;
       }
@@ -432,6 +494,71 @@ export class OpenAIResponsesProvider implements ApiProvider {
     }
   }
 
+  private resolveExplicitContextCacheTtlSeconds(): number | undefined {
+    const ttl = this.config.contextCache?.ttl;
+    if (
+      typeof ttl !== 'number' ||
+      !Number.isFinite(ttl) ||
+      !Number.isInteger(ttl) ||
+      ttl <= 0
+    ) {
+      return undefined;
+    }
+    return ttl;
+  }
+
+  private shouldEnableVolcContextCaching(model: ModelConfig): boolean {
+    if (
+      !isFeatureSupported(
+        FeatureId.OpenAIUseVolcContextCaching,
+        this.config,
+        model,
+      )
+    ) {
+      return false;
+    }
+    const resolvedCache = resolveContextCacheConfig(this.config.contextCache);
+    return resolvedCache.type === 'allow-paid';
+  }
+
+  private applyVolcContextCaching(
+    model: ModelConfig,
+    baseBody: ResponseCreateParamsBase,
+    previousResponseId: string | undefined,
+    inputAfterPreviousResponse: ResponseInputItem[] | undefined,
+  ): boolean {
+    if (!this.shouldEnableVolcContextCaching(model)) {
+      return false;
+    }
+    if (baseBody.instructions !== undefined && baseBody.instructions !== null) {
+      return false;
+    }
+    if (baseBody.store === false) {
+      return false;
+    }
+
+    baseBody.caching = { type: 'enabled' };
+
+    if (
+      previousResponseId &&
+      inputAfterPreviousResponse &&
+      inputAfterPreviousResponse.length > 0
+    ) {
+      baseBody.previous_response_id = previousResponseId;
+      baseBody.input = inputAfterPreviousResponse;
+    }
+
+    const explicitTtlSeconds = this.resolveExplicitContextCacheTtlSeconds();
+    if (explicitTtlSeconds !== undefined) {
+      const cappedTtlSeconds = Math.min(
+        explicitTtlSeconds,
+        VOLC_CONTEXT_CACHE_MAX_TTL_SECONDS,
+      );
+      baseBody.expire_at = Math.floor(Date.now() / 1000) + cappedTtlSeconds;
+    }
+    return true;
+  }
+
   protected handleRequest(
     sessionId: string,
     baseBody: ResponseCreateParamsBase,
@@ -457,9 +584,24 @@ export class OpenAIResponsesProvider implements ApiProvider {
       return;
     }
 
-    const { input: convertedMessages, sessionId } = this.convertMessages(
+    const expectedIdentity = createStatefulMarkerIdentity(this.config, model);
+    const enableVolcContextCacheLinking =
+      this.shouldEnableVolcContextCaching(model);
+    const sanitizedMessages = sanitizeMessagesForModelSwitch(messages, {
+      modelId: encodedModelId,
+      expectedIdentity,
+    });
+
+    const {
+      input: convertedMessages,
+      sessionId,
+      previousResponseId,
+      inputAfterPreviousResponse,
+    } = this.convertMessages(
       encodedModelId,
-      messages,
+      sanitizedMessages,
+      expectedIdentity,
+      enableVolcContextCacheLinking,
     );
     const tools = this.convertTools(options.tools);
     const toolChoice = this.convertToolChoice(options.toolMode, tools);
@@ -501,8 +643,19 @@ export class OpenAIResponsesProvider implements ApiProvider {
     this.handleRequest(sessionId, baseBody);
 
     Object.assign(baseBody, this.config.extraBody, model.extraBody);
+    const appliedVolcContextCaching = this.applyVolcContextCaching(
+      model,
+      baseBody,
+      previousResponseId,
+      inputAfterPreviousResponse,
+    );
 
-    const headers = this.buildHeaders(sessionId, credential, model, messages);
+    const headers = this.buildHeaders(
+      sessionId,
+      credential,
+      model,
+      sanitizedMessages,
+    );
 
     const client = this.createClient(
       logger,
@@ -515,8 +668,7 @@ export class OpenAIResponsesProvider implements ApiProvider {
 
     try {
       if (streamEnabled) {
-        const responseTimeoutMs =
-          this.config.timeout?.response ?? DEFAULT_CHAT_TIMEOUT_CONFIG.response;
+        const responseTimeoutMs = resolveChatNetwork(this.config).timeout.response;
 
         const stream = await client.responses.create(
           { ...baseBody, stream: true },
@@ -536,6 +688,8 @@ export class OpenAIResponsesProvider implements ApiProvider {
           token,
           logger,
           performanceTrace,
+          expectedIdentity,
+          appliedVolcContextCaching,
         );
       } else {
         const data = await client.responses.create(
@@ -545,7 +699,14 @@ export class OpenAIResponsesProvider implements ApiProvider {
             signal: abortController.signal,
           },
         );
-        yield* this.parseMessage(data, sessionId, performanceTrace, logger);
+        yield* this.parseMessage(
+          data,
+          sessionId,
+          performanceTrace,
+          logger,
+          expectedIdentity,
+          appliedVolcContextCaching,
+        );
       }
     } finally {
       cancellationListener.dispose();
@@ -557,6 +718,8 @@ export class OpenAIResponsesProvider implements ApiProvider {
     sessionId: string,
     performanceTrace: PerformanceTrace,
     logger: RequestLogger,
+    expectedIdentity: string,
+    includeResponseIdInMarker: boolean,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     // NOTE: The current behavior of VSCode is such that all Parts returned here will be
     // aggregated into a single Part during the next request, and only the Thinking part
@@ -613,10 +776,17 @@ export class OpenAIResponsesProvider implements ApiProvider {
       }
     }
 
-    yield encodeStatefulMarkerPart<OpenAIResponsesMarkerData>({
+    const markerData: OpenAIResponsesMarkerData = {
       data: message.output,
       sessionId,
-    });
+    };
+    if (includeResponseIdInMarker) {
+      markerData.responseId = message.id;
+    }
+    yield encodeStatefulMarkerPart<OpenAIResponsesMarkerData>(
+      expectedIdentity,
+      markerData,
+    );
 
     if (message.usage) {
       this.processUsage(message.usage, performanceTrace, logger);
@@ -699,6 +869,8 @@ export class OpenAIResponsesProvider implements ApiProvider {
     token: vscode.CancellationToken,
     logger: RequestLogger,
     performanceTrace: PerformanceTrace,
+    expectedIdentity: string,
+    includeResponseIdInMarker: boolean,
   ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
     let usage: ResponseUsage | undefined;
 
@@ -765,10 +937,17 @@ export class OpenAIResponsesProvider implements ApiProvider {
             'metadata-only',
           );
 
-          yield encodeStatefulMarkerPart<OpenAIResponsesMarkerData>({
+          const markerData: OpenAIResponsesMarkerData = {
             data: response.output,
             sessionId,
-          });
+          };
+          if (includeResponseIdInMarker) {
+            markerData.responseId = response.id;
+          }
+          yield encodeStatefulMarkerPart<OpenAIResponsesMarkerData>(
+            expectedIdentity,
+            markerData,
+          );
           break;
         }
 
@@ -854,4 +1033,5 @@ export class OpenAIResponsesProvider implements ApiProvider {
 export type OpenAIResponsesMarkerData = {
   data: ResponseInputItem[];
   sessionId?: string;
+  responseId?: string;
 };

@@ -78,8 +78,9 @@ declare module 'openai/resources/chat/completions' {
      * @see https://platform.xiaomimimo.com/#/docs/api/text-generation/openai-api
      * @see https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
      * @see https://modelstudio.console.alibabacloud.com/?tab=api#/api/?type=model&url=2712576
+     * @see https://www.volcengine.com/docs/82379/1569618?lang=zh
      */
-    thinking?: { type: 'enabled' | 'disabled' };
+    thinking?: { type: 'enabled' | 'disabled' | 'auto' };
 
     /**
      * @see https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode
@@ -190,6 +191,7 @@ declare module 'openai/resources/chat/completions' {
      */
     cache_control?: {
       type: 'ephemeral';
+      ttl?: '5m' | '1h';
     };
   }
   interface ChatCompletionFunctionTool {
@@ -200,6 +202,7 @@ declare module 'openai/resources/chat/completions' {
      */
     cache_control?: {
       type: 'ephemeral';
+      ttl?: '5m' | '1h';
     };
   }
   namespace ChatCompletionChunk {
@@ -240,6 +243,18 @@ declare module 'openai/resources/responses/responses' {
      * @see https://www.volcengine.com/docs/82379/1569618?lang=zh
      */
     thinking?: { type: 'enabled' | 'disabled' | 'auto' };
+    /**
+     * Context caching configuration for VolcEngine / BytePlus Responses API.
+     *
+     * @see https://www.volcengine.com/docs/82379/1602228
+     */
+    caching?: { type: 'enabled' | 'disabled'; prefix?: boolean };
+    /**
+     * Expiration timestamp (UTC Unix seconds) for cached/stored context.
+     *
+     * @see https://www.volcengine.com/docs/82379/1602228
+     */
+    expire_at?: number;
   }
 }
 
