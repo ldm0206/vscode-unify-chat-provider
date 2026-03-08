@@ -1759,6 +1759,62 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'qwen3.5-9b',
+    name: 'Qwen3.5-9B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-4b',
+    name: 'Qwen3.5-4B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-2b',
+    name: 'Qwen3.5-2B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.5-0.8b',
+    name: 'Qwen3.5-0.8B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'qwen3-max-2026-01-23',
     name: 'Qwen3-Max-Thinking',
     maxInputTokens: 252000,
