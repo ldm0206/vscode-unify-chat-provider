@@ -120,6 +120,7 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
     Object.assign(baseBody, {
       store: false,
       prompt_cache_key: sessionId,
+      instructions: '',
     });
   }
 
