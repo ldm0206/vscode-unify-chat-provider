@@ -51,8 +51,6 @@ Check out the [Cookbook](#-cookbook), you can start using it in minutes:
   - [Add Nvidia Account](#add-nvidia-account)
 - **Kimi, GLM, MiniMax, Qwen, DeepSeek, Llama Series Models**:
   - [Add Synthetic Account](#add-synthetic-account)
-- **Free Kimi K2.5, GLM 5, MiniMax M2.1, Qwen3, DeepSeek Series Models**:
-  - [Add iFlow API Key or CLI Account](#add-iflow-api-key-or-cli-account)
 - More Recipes:
   - [Impersonate Claude Code Client](#impersonate-claude-code-client)
 
@@ -141,19 +139,6 @@ VS Code's Copilot Chat itself supports logging into a GitHub Copilot account, so
 1. Open the VS Code Command Palette and search for `Unify Chat Provider: Add Provider From Well-Known Provider List`.
 2. Select `Synthetic` in the list, fill in the API Key generated in the user panel and press Enter.
 3. Click the `Save` button at the bottom of the configuration interface to complete.
-
-</details>
-
-#### Add iFlow API Key or CLI Account
-
-<details>
-
-0. You need to prepare an iFlow account.
-1. Open the VS Code Command Palette and search for `Unify Chat Provider: Add Provider From Well-Known Provider List`.
-2. Select `iFlow` in the list, and choose from two verification methods:
-   - `API Key`: Fill in the API Key generated in the iFlow console.
-   - `iFlow CLI`: Allow the extension to open the browser for authorized login, and log in to your account in the browser.
-3. After verification is completed, return to VS Code and click the `Save` button at the bottom of the configuration interface to complete.
 
 </details>
 
