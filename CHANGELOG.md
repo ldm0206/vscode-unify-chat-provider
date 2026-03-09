@@ -1,5 +1,22 @@
 # Changelog
 
+## v5.1.0 - 2026-03-09
+
+### Features
+- add previous_response_id handling for OpenAI responses API (638c440, SmallMain)
+- add service tier support (e49f29a, SmallMain)
+
+### Fixes
+- remove deprecated gemini-3.1-pro-preview-customtools model ID (1e4691e, SmallMain)
+- add default instructions field to OpenAICodexProvider request body (1f6eb6d, SmallMain)
+- update CLI clients (44c89dd, SmallMain)
+- update formats (e3f5e2a, SmallMain)
+- update QwenCode client headers and model configs (10ec83a, SmallMain)
+
+### Chores
+- update CLI clients and tools in agent configuration (fb6460b, SmallMain)
+- Update CLI clients and synchronize model IDs according to reference projects (8bcc9b3, SmallMain)
+
 ## v5.0.0 - 2026-03-08
 
 ### Breaking Changes
