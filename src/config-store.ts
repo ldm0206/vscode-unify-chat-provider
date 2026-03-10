@@ -8,7 +8,12 @@ import {
 import { normalizeBaseUrlInput } from './utils';
 import { PROVIDER_KEYS, ProviderType } from './client/definitions';
 import { getRenamedProviderType } from './secret/migration';
-import { ContextCacheConfig, ModelConfig, ProviderConfig } from './types';
+import {
+  ContextCacheConfig,
+  ModelConfig,
+  ProviderConfig,
+  ServiceTier,
+} from './types';
 
 const CONFIG_NAMESPACE = 'unifyChatProvider';
 const DEFAULT_BALANCE_REFRESH_INTERVAL_MS = 60_000;
@@ -343,9 +348,12 @@ export class ConfigStore {
     );
 
     provider.transport = this.normalizeTransportMode(provider.transport);
+    provider.serviceTier = this.normalizeServiceTier(provider.serviceTier);
     provider.extraHeaders = this.normalizeStringRecord(provider.extraHeaders);
     provider.extraBody = this.normalizeObjectRecord(provider.extraBody);
-    provider.contextCache = this.normalizeContextCacheConfig(provider.contextCache);
+    provider.contextCache = this.normalizeContextCacheConfig(
+      provider.contextCache,
+    );
 
     const legacyApiKey = obj.apiKey;
     if (
@@ -365,6 +373,19 @@ export class ConfigStore {
     return raw === 'auto' || raw === 'sse' || raw === 'websocket'
       ? raw
       : undefined;
+  }
+
+  private normalizeServiceTier(raw: unknown): ServiceTier | undefined {
+    switch (raw) {
+      case 'auto':
+      case 'standard':
+      case 'flex':
+      case 'scale':
+      case 'priority':
+        return raw;
+      default:
+        return undefined;
+    }
   }
 
   private normalizeContextCacheConfig(
@@ -445,6 +466,7 @@ export class ConfigStore {
           withoutKeys(MODEL_CONFIG_KEYS, ['id'] as const),
         );
 
+        model.serviceTier = this.normalizeServiceTier(model.serviceTier);
         model.extraHeaders = this.normalizeStringRecord(model.extraHeaders);
         model.extraBody = this.normalizeObjectRecord(model.extraBody);
 
@@ -468,7 +490,11 @@ export class ConfigStore {
    */
   async setEndpoints(endpoints: ProviderConfig[]): Promise<void> {
     const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+    await config.update(
+      'endpoints',
+      endpoints,
+      vscode.ConfigurationTarget.Global,
+    );
   }
 
   /**
@@ -476,7 +502,11 @@ export class ConfigStore {
    */
   async setRawEndpoints(endpoints: unknown[]): Promise<void> {
     const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+    await config.update(
+      'endpoints',
+      endpoints,
+      vscode.ConfigurationTarget.Global,
+    );
   }
 
   /**

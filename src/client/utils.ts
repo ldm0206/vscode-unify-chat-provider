@@ -309,7 +309,9 @@ export function resolveOpenAIServiceTier(
   provider: ProviderConfig,
   model: ModelConfig,
 ): 'auto' | 'default' | 'flex' | 'scale' | 'priority' | undefined {
-  switch (model.serviceTier) {
+  const serviceTier = model.serviceTier ?? provider.serviceTier;
+
+  switch (serviceTier) {
     case 'auto':
       return 'auto';
     case 'standard':
@@ -329,7 +331,9 @@ export function resolveAnthropicServiceTier(
   provider: ProviderConfig,
   model: ModelConfig,
 ): 'auto' | 'standard_only' | undefined {
-  switch (model.serviceTier) {
+  const serviceTier = model.serviceTier ?? provider.serviceTier;
+
+  switch (serviceTier) {
     case 'auto':
       return 'auto';
     case 'standard':

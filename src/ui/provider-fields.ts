@@ -224,6 +224,44 @@ export const providerFormSchema: FormSchema<ProviderFormDraft> = {
       getDescription: (draft) => getTransportModeDescription(draft),
     },
     {
+      key: 'serviceTier',
+      type: 'picker',
+      label: t('Service Tier'),
+      icon: 'layers',
+      section: 'primary',
+      title: t('Service Tier'),
+      placeholder: t('Choose service tier'),
+      options: [
+        {
+          label: t('Default'),
+          description: t('Use provider default behavior'),
+          value: undefined,
+        },
+        {
+          label: t('Auto'),
+          value: 'auto',
+        },
+        {
+          label: t('Standard'),
+          value: 'standard',
+        },
+        {
+          label: t('Flex'),
+          value: 'flex',
+        },
+        {
+          label: t('Scale'),
+          value: 'scale',
+        },
+        {
+          label: t('Priority'),
+          value: 'priority',
+        },
+      ],
+      getDescription: (draft) =>
+        draft.serviceTier === undefined ? t('default') : draft.serviceTier,
+    },
+    {
       key: 'contextCache',
       type: 'custom',
       label: t('Context Cache'),

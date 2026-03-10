@@ -536,6 +536,24 @@
                   "%configuration.endpoints.transport.enumDescriptions.2%"
                 ]
               },
+              "serviceTier": {
+                "type": "string",
+                "description": "%configuration.endpoints.serviceTier.description%",
+                "enum": [
+                  "auto",
+                  "standard",
+                  "flex",
+                  "scale",
+                  "priority"
+                ],
+                "enumDescriptions": [
+                  "%configuration.endpoints.serviceTier.enumDescriptions.0%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.1%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.2%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.3%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.4%"
+                ]
+              },
               "extraHeaders": {
                 "type": "object",
                 "description": "%configuration.endpoints.extraHeaders.description%",
