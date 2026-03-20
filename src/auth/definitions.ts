@@ -2,7 +2,6 @@ import { t } from '../i18n';
 import { SecretStore } from '../secret';
 import type { AuthProvider, AuthProviderContext } from './auth-provider';
 import { ApiKeyAuthProvider } from './providers/api-key';
-import { IFlowCliAuthProvider } from './providers/iflow-cli';
 import { AntigravityOAuthProvider } from './providers/antigravity-oauth';
 import { GeminiCliOAuthProvider } from './providers/google-gemini-oauth';
 import { GitHubCopilotAuthProvider } from './providers/github-copilot';
@@ -73,13 +72,6 @@ export const AUTH_METHODS = {
     description: t('Authenticate with Google Vertex AI'),
     category: 'Dedicated',
     ctor: GoogleVertexAIAuthProvider,
-  },
-  'iflow-cli': {
-    id: 'iflow-cli',
-    label: t('iFlow CLI'),
-    description: t('Authenticate using iFlow OAuth (CLI)'),
-    category: 'Experimental',
-    ctor: IFlowCliAuthProvider,
   },
   'antigravity-oauth': {
     id: 'antigravity-oauth',

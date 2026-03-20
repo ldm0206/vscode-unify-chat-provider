@@ -31,12 +31,10 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     baseUrl: 'https://api.openai.com',
     authTypes: ['api-key'],
     models: [
-      'gpt-5.2',
-      'gpt-5.1',
-      'gpt-5',
-      'gpt-5-mini',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.4-nano',
       'gpt-5.2-pro',
-      'gpt-5-nano',
       'gpt-4.1',
       'gpt-oss-120b',
       'gpt-oss-20b',
@@ -96,8 +94,8 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     baseUrl: 'https://api.x.ai',
     authTypes: ['api-key'],
     models: [
-      'grok-4.20-beta-0309-reasoning',
-      'grok-4.20-beta-0309-non-reasoning',
+      'grok-4.20-0309-reasoning',
+      'grok-4.20-0309-non-reasoning',
       'grok-4',
       'grok-4-1-fast-reasoning',
       'grok-4-1-fast-non-reasoning',
@@ -343,7 +341,7 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     type: 'openai-chat-completion',
     baseUrl: 'https://api.xiaomimimo.com/v1',
     authTypes: ['api-key'],
-    models: ['mimo-v2-flash'],
+    models: ['mimo-v2-pro', 'mimo-v2-omni', 'mimo-v2-flash'],
   },
   {
     name: 'StepFun (China)',
@@ -386,6 +384,7 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     authTypes: ['api-key'],
     models: [
       'glm-5',
+      'glm-5-turbo',
       'glm-4.7',
       'glm-4.6v',
       'glm-4.7-flashx',
@@ -399,7 +398,14 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     type: 'openai-chat-completion',
     baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
     authTypes: ['api-key'],
-    models: ['glm-5', 'glm-4.7', 'glm-4.6', 'glm-4.7-flashx', 'glm-4.7-flash'],
+    models: [
+      'glm-5',
+      'glm-5-turbo',
+      'glm-4.7',
+      'glm-4.6',
+      'glm-4.7-flashx',
+      'glm-4.7-flash',
+    ],
   },
   {
     name: 'Z.AI',
@@ -409,6 +415,7 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     authTypes: ['api-key'],
     models: [
       'glm-5',
+      'glm-5-turbo',
       'glm-4.7',
       'glm-4.6v',
       'glm-4.7-flashx',
@@ -422,7 +429,14 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     type: 'openai-chat-completion',
     baseUrl: 'https://api.z.ai/api/coding/paas/v4',
     authTypes: ['api-key'],
-    models: ['glm-5', 'glm-4.7', 'glm-4.6', 'glm-4.7-flashx', 'glm-4.7-flash'],
+    models: [
+      'glm-5',
+      'glm-5-turbo',
+      'glm-4.7',
+      'glm-4.6',
+      'glm-4.7-flashx',
+      'glm-4.7-flash',
+    ],
   },
   {
     name: 'MiniMax (China)',
@@ -430,7 +444,7 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     type: 'anthropic',
     baseUrl: 'https://api.minimaxi.com/anthropic',
     authTypes: ['api-key'],
-    models: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
   },
   {
     name: 'MiniMax (International)',
@@ -438,7 +452,7 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     type: 'anthropic',
     baseUrl: 'https://api.minimax.io/anthropic',
     authTypes: ['api-key'],
-    models: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
   },
   {
     name: 'LongCat',
@@ -605,18 +619,6 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
       'claude-sonnet-4-5',
       'claude-haiku-4-5',
     ],
-  },
-  {
-    name: 'iFlow',
-    category: 'Experimental',
-    type: 'iflow-cli',
-    baseUrl: 'https://apis.iflow.cn/v1',
-    authTypes: ['iflow-cli', 'api-key'],
-    extraHeaders: {
-      'User-Agent': 'iFlow-Cli',
-    },
-    models: ['glm-5', 'glm-4.7', 'MiniMax-M2.5', 'MiniMax-M2.1', 'kimi-k2.5'],
-    autoFetchOfficialModels: true,
   },
   {
     name: 'Kilo Code',

@@ -127,7 +127,7 @@ declare module 'openai/resources/chat/completions' {
     /**
      * Non-standard thinking toggle supported by some OpenAI-compatible providers.
      *
-     * Used by iFlow MiniMax models.
+     * Used by some MiniMax-compatible providers.
      */
     reasoning_split?: boolean;
   }

@@ -74,7 +74,7 @@ type HttpStartParams = {
   redirectPath: string;
   /**
    * Optional expected state used to disambiguate concurrent sessions on fixed ports.
-   * Recommended for fixed-port providers (Codex/Claude/iFlow).
+   * Recommended for fixed-port providers (Codex/Claude).
    */
   expectedState?: string;
 };

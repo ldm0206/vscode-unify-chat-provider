@@ -456,6 +456,36 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'gpt-5.4-mini',
+    name: 'GPT-5.4 Mini',
+    maxInputTokens: 400000,
+    maxOutputTokens: 128000,
+    stream: true,
+    tokenizer: 'openai',
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'gpt-5.4-nano',
+    name: 'GPT-5.4 Nano',
+    maxInputTokens: 400000,
+    maxOutputTokens: 128000,
+    stream: true,
+    tokenizer: 'openai',
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'gpt-5.3-codex-spark',
     name: 'GPT-5.3-Codex-Spark',
     maxInputTokens: 128000,
@@ -1129,6 +1159,57 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: false,
       imageInput: false,
     },
+  },
+  {
+    id: 'MiniMax-M2.7',
+    overrides: [
+      'minimax-m2.7-free',
+      'hf:MiniMaxAI/MiniMax-M2.7',
+      {
+        matchers: ['integrate.api.nvidia.com'],
+        config: {
+          id: 'minimaxai/minimax-m2.7',
+          maxOutputTokens: 32768,
+        },
+      },
+      {
+        matchers: [
+          'dashscope.aliyuncs.com',
+          'dashscope-intl.aliyuncs.com',
+          'api-inference.modelscope.cn',
+        ],
+        config: {
+          maxOutputTokens: 32768,
+        },
+      },
+    ],
+    name: 'MiniMax-M2.7',
+    maxInputTokens: 204800,
+    maxOutputTokens: 102400,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+    temperature: 1.0,
+  },
+  {
+    id: 'MiniMax-M2.7-highspeed',
+    name: 'MiniMax-M2.7-Highspeed',
+    maxInputTokens: 204800,
+    maxOutputTokens: 102400,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+    temperature: 1.0,
   },
   {
     id: 'MiniMax-M2.5',
@@ -2778,6 +2859,34 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
+    id: 'mimo-v2-pro',
+    name: 'MiMo V2 Pro',
+    maxInputTokens: 1000000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+  },
+  {
+    id: 'mimo-v2-omni',
+    name: 'MiMo V2 Omni',
+    maxInputTokens: 256000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: false,
+    },
+  },
+  {
     id: 'mimo-v2-flash',
     name: 'MiMo V2 Flash',
     maxInputTokens: 256000,
@@ -2815,8 +2924,8 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
-    id: 'glm-5-code',
-    name: 'GLM-5-Code',
+    id: 'glm-5-turbo',
+    name: 'GLM-5-Turbo',
     maxInputTokens: 200000,
     maxOutputTokens: 128000,
     stream: true,
@@ -3140,8 +3249,8 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
-    id: 'grok-4.20-beta-0309-reasoning',
-    name: 'Grok 4.20 Beta 0309 (Reasoning)',
+    id: 'grok-4.20-0309-reasoning',
+    name: 'Grok 4.20 0309 (Reasoning)',
     overrides: [
       {
         matchers: ['openrouter.ai'],
@@ -3162,8 +3271,8 @@ const _WELL_KNOWN_MODELS = [
     },
   },
   {
-    id: 'grok-4.20-beta-0309-non-reasoning',
-    name: 'Grok 4.20 Beta 0309 (Non-Reasoning)',
+    id: 'grok-4.20-0309-non-reasoning',
+    name: 'Grok 4.20 0309 (Non-Reasoning)',
     maxInputTokens: 2000000,
     maxOutputTokens: 1000000,
     stream: true,
