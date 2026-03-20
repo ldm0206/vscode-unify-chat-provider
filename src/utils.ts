@@ -1174,13 +1174,124 @@ export function tryDecodeStatefulMarkerPart<T extends object>(
   }
 }
 
-export function sanitizeMessagesForModelSwitch(
+export interface SanitizedMessagesForModelSwitchResult {
+  messages: vscode.LanguageModelChatRequestMessage[];
+  messageOriginIndexes: number[];
+  sanitizedMessageIndexes: ReadonlySet<number>;
+}
+
+function collectToolCallIds(
+  message: vscode.LanguageModelChatRequestMessage,
+): string[] {
+  if (message.role !== vscode.LanguageModelChatMessageRole.Assistant) {
+    return [];
+  }
+
+  return message.content.flatMap((part) =>
+    part instanceof vscode.LanguageModelToolCallPart ? [part.callId] : [],
+  );
+}
+
+function collectToolResultIds(
+  message: vscode.LanguageModelChatRequestMessage,
+): string[] {
+  if (message.role !== vscode.LanguageModelChatMessageRole.User) {
+    return [];
+  }
+
+  return message.content.flatMap((part) =>
+    part instanceof vscode.LanguageModelToolResultPart ||
+    part instanceof vscode.LanguageModelToolResultPart2
+      ? [part.callId]
+      : [],
+  );
+}
+
+function sanitizeMessageToTextOnly(
+  message: vscode.LanguageModelChatRequestMessage,
+): vscode.LanguageModelChatRequestMessage | undefined {
+  if (
+    message.role !== vscode.LanguageModelChatMessageRole.User &&
+    message.role !== vscode.LanguageModelChatMessageRole.Assistant
+  ) {
+    return message;
+  }
+
+  const textParts = message.content.filter(
+    (part): part is vscode.LanguageModelTextPart =>
+      part instanceof vscode.LanguageModelTextPart,
+  );
+
+  if (textParts.length === 0) {
+    return undefined;
+  }
+
+  return {
+    role: message.role,
+    name: message.name,
+    content: textParts,
+  };
+}
+
+function propagateSanitizedToolNeighbors(
+  messages: readonly vscode.LanguageModelChatRequestMessage[],
+  sanitizedMessageIndexes: Set<number>,
+): void {
+  const toolCallMessageIndexByCallId = new Map<string, number>();
+  const toolResultMessageIndexesByCallId = new Map<string, number[]>();
+
+  for (const [index, message] of messages.entries()) {
+    for (const callId of collectToolCallIds(message)) {
+      toolCallMessageIndexByCallId.set(callId, index);
+    }
+
+    for (const callId of collectToolResultIds(message)) {
+      const indexes = toolResultMessageIndexesByCallId.get(callId);
+      if (indexes) {
+        indexes.push(index);
+      } else {
+        toolResultMessageIndexesByCallId.set(callId, [index]);
+      }
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const [callId, callMessageIndex] of toolCallMessageIndexByCallId) {
+      const resultMessageIndexes =
+        toolResultMessageIndexesByCallId.get(callId) ?? [];
+      const callMessageSanitized =
+        sanitizedMessageIndexes.has(callMessageIndex);
+      const hasSanitizedResultMessage = resultMessageIndexes.some((index) =>
+        sanitizedMessageIndexes.has(index),
+      );
+
+      if (callMessageSanitized) {
+        for (const resultMessageIndex of resultMessageIndexes) {
+          if (!sanitizedMessageIndexes.has(resultMessageIndex)) {
+            sanitizedMessageIndexes.add(resultMessageIndex);
+            changed = true;
+          }
+        }
+      }
+
+      if (hasSanitizedResultMessage && !callMessageSanitized) {
+        sanitizedMessageIndexes.add(callMessageIndex);
+        changed = true;
+      }
+    }
+  }
+}
+
+export function sanitizeMessagesForModelSwitchDetailed(
   messages: readonly vscode.LanguageModelChatRequestMessage[],
   options: { modelId: string; expectedIdentity: string },
-): vscode.LanguageModelChatRequestMessage[] {
-  const out: vscode.LanguageModelChatRequestMessage[] = [];
+): SanitizedMessagesForModelSwitchResult {
+  const sanitizedMessageIndexes = new Set<number>();
 
-  let round: vscode.LanguageModelChatRequestMessage[] = [];
+  let round: number[] = [];
   let roundHasAssistant = false;
 
   const flush = (): void => {
@@ -1189,15 +1300,10 @@ export function sanitizeMessagesForModelSwitch(
       return;
     }
 
-    if (!roundHasAssistant) {
-      out.push(...round);
-      round = [];
-      roundHasAssistant = false;
-      return;
-    }
-
-    const isRoundValid = (): boolean => {
-      for (const message of round) {
+    if (roundHasAssistant) {
+      let isRoundValid = true;
+      for (const index of round) {
+        const message = messages[index];
         if (message.role !== vscode.LanguageModelChatMessageRole.Assistant) {
           continue;
         }
@@ -1209,7 +1315,8 @@ export function sanitizeMessagesForModelSwitch(
         );
 
         if (markerParts.length !== 1) {
-          return false;
+          isRoundValid = false;
+          break;
         }
 
         const decoded = tryDecodeStatefulMarkerPart<object>(
@@ -1218,78 +1325,78 @@ export function sanitizeMessagesForModelSwitch(
           markerParts[0],
         );
         if (!decoded) {
-          return false;
+          isRoundValid = false;
+          break;
         }
       }
 
-      return true;
-    };
-
-    if (isRoundValid()) {
-      out.push(...round);
-      round = [];
-      roundHasAssistant = false;
-      return;
-    }
-
-    for (const message of round) {
-      if (
-        message.role !== vscode.LanguageModelChatMessageRole.User &&
-        message.role !== vscode.LanguageModelChatMessageRole.Assistant
-      ) {
-        out.push(message);
-        continue;
+      if (!isRoundValid) {
+        for (const index of round) {
+          sanitizedMessageIndexes.add(index);
+        }
       }
-
-      const textParts = message.content.filter(
-        (part): part is vscode.LanguageModelTextPart =>
-          part instanceof vscode.LanguageModelTextPart,
-      );
-
-      if (textParts.length === 0) {
-        continue;
-      }
-
-      out.push({
-        role: message.role,
-        name: message.name,
-        content: textParts,
-      });
     }
 
     round = [];
     roundHasAssistant = false;
   };
 
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     switch (message.role) {
       case vscode.LanguageModelChatMessageRole.System:
         flush();
-        out.push(message);
         break;
 
       case vscode.LanguageModelChatMessageRole.User:
         if (roundHasAssistant) {
           flush();
         }
-        round.push(message);
+        round.push(index);
         break;
 
       case vscode.LanguageModelChatMessageRole.Assistant:
         roundHasAssistant = true;
-        round.push(message);
+        round.push(index);
         break;
 
       default:
         flush();
-        out.push(message);
         break;
     }
   }
 
   flush();
 
-  return out;
+  propagateSanitizedToolNeighbors(messages, sanitizedMessageIndexes);
+
+  const out: vscode.LanguageModelChatRequestMessage[] = [];
+  const messageOriginIndexes: number[] = [];
+  for (const [index, message] of messages.entries()) {
+    if (!sanitizedMessageIndexes.has(index)) {
+      out.push(message);
+      messageOriginIndexes.push(index);
+      continue;
+    }
+
+    const sanitizedMessage = sanitizeMessageToTextOnly(message);
+    if (sanitizedMessage) {
+      out.push(sanitizedMessage);
+      messageOriginIndexes.push(index);
+    }
+  }
+
+  return {
+    messages: out,
+    messageOriginIndexes,
+    sanitizedMessageIndexes: new Set(sanitizedMessageIndexes),
+  };
+}
+
+export function sanitizeMessagesForModelSwitch(
+  messages: readonly vscode.LanguageModelChatRequestMessage[],
+  options: { modelId: string; expectedIdentity: string },
+): vscode.LanguageModelChatRequestMessage[] {
+  return sanitizeMessagesForModelSwitchDetailed(messages, options).messages;
 }
 
 const SUPPORTED_BASE64_IMAGE_MIME_TYPES = [

@@ -26,7 +26,7 @@ import {
   resolveContextCacheConfig,
   resolveChatNetwork,
   resolveOpenAISdkTimeoutMs,
-  sanitizeMessagesForModelSwitch,
+  sanitizeMessagesForModelSwitchDetailed,
   withIdleTimeout,
 } from '../../utils';
 import {
@@ -89,6 +89,7 @@ type ConvertedMessagesResult = {
   sessionId: string;
   previousResponseId?: string;
   inputAfterPreviousResponse?: ResponseInputItem[];
+  previousResponseBoundaryIndex?: number;
 };
 
 type ResponseContinuation = {
@@ -344,9 +345,11 @@ export class OpenAIResponsesProvider implements ApiProvider {
     encodedModelId: string,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
     expectedIdentity: string,
+    messageOriginIndexes?: readonly number[],
   ): ConvertedMessagesResult {
     let firstSessionId: string | null = null;
     let latestResponseId: string | undefined;
+    let latestResponseBoundaryIndex: number | undefined;
     let outItemsAfterLatestResponse: ResponseInputItem[] = [];
     const outItems: ResponseInputItem[] = [];
     const rawMap = new Map<
@@ -360,7 +363,7 @@ export class OpenAIResponsesProvider implements ApiProvider {
       }
     };
 
-    for (const msg of messages) {
+    for (const [messageIndex, msg] of messages.entries()) {
       switch (msg.role) {
         case vscode.LanguageModelChatMessageRole.System:
           for (const part of msg.content) {
@@ -405,9 +408,12 @@ export class OpenAIResponsesProvider implements ApiProvider {
                 }
                 if (typeof responseId === 'string' && responseId.trim()) {
                   latestResponseId = responseId;
+                  latestResponseBoundaryIndex =
+                    messageOriginIndexes?.[messageIndex] ?? messageIndex;
                   outItemsAfterLatestResponse = [];
                 } else {
                   latestResponseId = undefined;
+                  latestResponseBoundaryIndex = undefined;
                   outItemsAfterLatestResponse = [];
                 }
                 const item: EasyInputMessage = {
@@ -453,8 +459,26 @@ export class OpenAIResponsesProvider implements ApiProvider {
     if (latestResponseId !== undefined) {
       result.previousResponseId = latestResponseId;
       result.inputAfterPreviousResponse = outItemsAfterLatestResponse;
+      result.previousResponseBoundaryIndex = latestResponseBoundaryIndex;
     }
     return result;
+  }
+
+  private hasSanitizedMessagesAfterBoundary(
+    sanitizedMessageIndexes: ReadonlySet<number>,
+    boundaryIndex: number | undefined,
+  ): boolean {
+    if (boundaryIndex === undefined) {
+      return false;
+    }
+
+    for (const index of sanitizedMessageIndexes) {
+      if (index > boundaryIndex) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   convertPart(
@@ -1052,20 +1076,23 @@ export class OpenAIResponsesProvider implements ApiProvider {
     }
 
     const expectedIdentity = createStatefulMarkerIdentity(this.config, model);
-    const sanitizedMessages = sanitizeMessagesForModelSwitch(messages, {
+    const sanitization = sanitizeMessagesForModelSwitchDetailed(messages, {
       modelId: encodedModelId,
       expectedIdentity,
     });
+    const sanitizedMessages = sanitization.messages;
 
     const {
       input: convertedMessages,
       sessionId,
       previousResponseId,
       inputAfterPreviousResponse,
+      previousResponseBoundaryIndex,
     } = this.convertMessages(
       encodedModelId,
       sanitizedMessages,
       expectedIdentity,
+      sanitization.messageOriginIndexes,
     );
     const tools = this.convertTools(options.tools);
     const toolChoice = this.convertToolChoice(options.toolMode, tools);
@@ -1089,6 +1116,12 @@ export class OpenAIResponsesProvider implements ApiProvider {
     );
     const serviceTier = resolveOpenAIServiceTier(this.config, model);
     const transportMode = this.resolveTransportMode(streamEnabled);
+    const canUsePreviousResponseId =
+      previousResponseId !== undefined &&
+      !this.hasSanitizedMessagesAfterBoundary(
+        sanitization.sanitizedMessageIndexes,
+        previousResponseBoundaryIndex,
+      );
 
     const baseBody: OpenAIResponsesRequestBody = {
       model: getBaseModelId(model.id),
@@ -1121,13 +1154,23 @@ export class OpenAIResponsesProvider implements ApiProvider {
 
     const httpIncludeResponseIdInMarker =
       this.shouldIncludeResponseIdInMarker(baseBody);
-    const httpContinuation = supportsPreviousResponseId
+    const httpContinuation =
+      supportsPreviousResponseId && canUsePreviousResponseId
       ? this.resolveResponseContinuation(
           baseBody,
           previousResponseId,
           inputAfterPreviousResponse,
         )
       : undefined;
+    if (
+      supportsPreviousResponseId &&
+      previousResponseId &&
+      !canUsePreviousResponseId
+    ) {
+      logger.verbose(
+        'Skipping previous_response_id because messages after the latest trusted response boundary were sanitized.',
+      );
+    }
     const fullInput = baseBody.input;
 
     const headers = this.buildHeaders(
@@ -1190,14 +1233,17 @@ export class OpenAIResponsesProvider implements ApiProvider {
       );
       const hasHotWebSocketSession =
         webSocketSessionManager.hasSession(webSocketSessionKey);
-      const webSocketContinuation = this.resolveResponseContinuation(
-        baseBody,
-        previousResponseId,
-        inputAfterPreviousResponse,
-        {
-          allowStoreFalse: hasHotWebSocketSession,
-        },
-      );
+      const webSocketContinuation =
+        supportsPreviousResponseId && canUsePreviousResponseId
+          ? this.resolveResponseContinuation(
+              baseBody,
+              previousResponseId,
+              inputAfterPreviousResponse,
+              {
+                allowStoreFalse: hasHotWebSocketSession,
+              },
+            )
+          : undefined;
       const webSocketContext: OpenAIResponsesWebSocketRequestContext = {
         ...baseContext,
         continuation: webSocketContinuation,
