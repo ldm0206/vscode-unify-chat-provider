@@ -1,8 +1,8 @@
-import { AuthConfig } from './auth/types';
-import { ProviderType } from './client/definitions';
+import type { AuthConfig } from './auth/types';
+import type { ProviderType } from './client/definitions';
 import type { RetryConfig } from './utils';
 import type { TokenizerId } from './tokenizer/tokenizers';
-import { BalanceConfig } from './balance/types';
+import type { BalanceConfig } from './balance/types';
 
 export type ContextCacheType = 'only-free' | 'allow-paid';
 
@@ -11,6 +11,8 @@ export interface ContextCacheConfig {
   /** TTL in seconds. */
   ttl?: number;
 }
+
+export type ServiceTier = 'auto' | 'standard' | 'flex' | 'scale' | 'priority';
 
 /**
  * Configuration for a single provider endpoint
@@ -22,6 +24,14 @@ export interface ProviderConfig {
   name: string;
   /** Base URL for the API (e.g., https://api.anthropic.com) */
   baseUrl: string;
+  /**
+   * Preferred transport mode for this provider.
+   *
+   * Leave undefined to let the provider choose its default behavior.
+   */
+  transport?: 'auto' | 'sse' | 'websocket';
+  /** Default service tier / processing tier for this provider. */
+  serviceTier?: ServiceTier;
   /**
    * Unified authentication configuration.
    */
@@ -109,6 +119,8 @@ export interface ModelConfig {
   presencePenalty?: number;
   /** Parallel tool calling (true to enable, false to disable, undefined to use default) */
   parallelToolCalling?: boolean;
+  /** Service tier / processing tier */
+  serviceTier?: ServiceTier;
   /**
    * Constrains response verbosity. Lower = concise, higher = verbose.
    * Supported values: low | medium | high.
@@ -122,6 +134,11 @@ export interface ModelConfig {
      * Thinking effort level. Leave undefined to let the provider decide.
      */
     effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+    /**
+     * Reasoning summary level for Responses-style APIs.
+     * Leave undefined to let the provider decide.
+     */
+    summary?: 'auto' | 'concise' | 'detailed';
   };
   /**
    * Use native web search tool.

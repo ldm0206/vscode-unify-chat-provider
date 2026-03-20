@@ -13,7 +13,8 @@ export type BalanceMethod =
   | 'claude-relay-service'
   | 'antigravity'
   | 'gemini-cli'
-  | 'codex';
+  | 'codex'
+  | 'synthetic';
 
 export interface NoBalanceConfig {
   method: 'none';
@@ -53,6 +54,8 @@ export interface AiHubMixBalanceConfig {
 
 export interface ClaudeRelayServiceBalanceConfig {
   method: 'claude-relay-service';
+  /** Optional custom base URL for Claude Relay Service apiStats APIs. */
+  baseUrl?: string;
 }
 
 export interface AntigravityBalanceConfig {
@@ -67,6 +70,10 @@ export interface CodexBalanceConfig {
   method: 'codex';
 }
 
+export interface SyntheticBalanceConfig {
+  method: 'synthetic';
+}
+
 export type BalanceConfig =
   | NoBalanceConfig
   | MoonshotAIBalanceConfig
@@ -79,7 +86,8 @@ export type BalanceConfig =
   | ClaudeRelayServiceBalanceConfig
   | AntigravityBalanceConfig
   | GeminiCliBalanceConfig
-  | CodexBalanceConfig;
+  | CodexBalanceConfig
+  | SyntheticBalanceConfig;
 
 export type BalanceMetricType =
   | 'amount'
@@ -236,4 +244,10 @@ export function isCodexBalanceConfig(
   config: BalanceConfig | undefined,
 ): config is CodexBalanceConfig {
   return config?.method === 'codex';
+}
+
+export function isSyntheticBalanceConfig(
+  config: BalanceConfig | undefined,
+): config is SyntheticBalanceConfig {
+  return config?.method === 'synthetic';
 }

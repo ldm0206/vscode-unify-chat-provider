@@ -2,7 +2,7 @@
   "name": "vscode-unify-chat-provider",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "4.9.4",
+  "version": "5.5.0",
   "categories": [
     "AI",
     "Chat"
@@ -185,6 +185,11 @@
           "type": "boolean",
           "description": "%configuration.verbose.description%",
           "default": false
+        },
+        "unifyChatProvider.modelDisplayNameTemplate": {
+          "type": "string",
+          "description": "%configuration.modelDisplayNameTemplate.description%",
+          "default": "{modelName}"
         },
         "unifyChatProvider.storeApiKeyInSettings": {
           "type": "boolean",
@@ -522,6 +527,38 @@
                   }
                 }
               },
+              "transport": {
+                "type": "string",
+                "description": "%configuration.endpoints.transport.description%",
+                "enum": [
+                  "auto",
+                  "sse",
+                  "websocket"
+                ],
+                "enumDescriptions": [
+                  "%configuration.endpoints.transport.enumDescriptions.0%",
+                  "%configuration.endpoints.transport.enumDescriptions.1%",
+                  "%configuration.endpoints.transport.enumDescriptions.2%"
+                ]
+              },
+              "serviceTier": {
+                "type": "string",
+                "description": "%configuration.endpoints.serviceTier.description%",
+                "enum": [
+                  "auto",
+                  "standard",
+                  "flex",
+                  "scale",
+                  "priority"
+                ],
+                "enumDescriptions": [
+                  "%configuration.endpoints.serviceTier.enumDescriptions.0%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.1%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.2%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.3%",
+                  "%configuration.endpoints.serviceTier.enumDescriptions.4%"
+                ]
+              },
               "extraHeaders": {
                 "type": "object",
                 "description": "%configuration.endpoints.extraHeaders.description%",
@@ -712,6 +749,24 @@
                             "%configuration.endpoints.models.verbosity.enumDescriptions.2%"
                           ]
                         },
+                        "serviceTier": {
+                          "type": "string",
+                          "description": "%configuration.endpoints.models.serviceTier.description%",
+                          "enum": [
+                            "auto",
+                            "standard",
+                            "flex",
+                            "scale",
+                            "priority"
+                          ],
+                          "enumDescriptions": [
+                            "%configuration.endpoints.models.serviceTier.enumDescriptions.0%",
+                            "%configuration.endpoints.models.serviceTier.enumDescriptions.1%",
+                            "%configuration.endpoints.models.serviceTier.enumDescriptions.2%",
+                            "%configuration.endpoints.models.serviceTier.enumDescriptions.3%",
+                            "%configuration.endpoints.models.serviceTier.enumDescriptions.4%"
+                          ]
+                        },
                         "thinking": {
                           "type": "object",
                           "description": "%configuration.endpoints.models.thinking.description%",
@@ -744,6 +799,20 @@
                                     "%configuration.endpoints.models.thinking.enabled.effort.enumDescriptions.3%",
                                     "%configuration.endpoints.models.thinking.enabled.effort.enumDescriptions.4%",
                                     "%configuration.endpoints.models.thinking.enabled.effort.enumDescriptions.5%"
+                                  ]
+                                },
+                                "summary": {
+                                  "type": "string",
+                                  "description": "%configuration.endpoints.models.thinking.enabled.summary.description%",
+                                  "enum": [
+                                    "auto",
+                                    "concise",
+                                    "detailed"
+                                  ],
+                                  "enumDescriptions": [
+                                    "%configuration.endpoints.models.thinking.enabled.summary.enumDescriptions.0%",
+                                    "%configuration.endpoints.models.thinking.enabled.summary.enumDescriptions.1%",
+                                    "%configuration.endpoints.models.thinking.enabled.summary.enumDescriptions.2%"
                                   ]
                                 }
                               },
@@ -779,6 +848,20 @@
                                     "%configuration.endpoints.models.thinking.auto.effort.enumDescriptions.3%",
                                     "%configuration.endpoints.models.thinking.auto.effort.enumDescriptions.4%",
                                     "%configuration.endpoints.models.thinking.auto.effort.enumDescriptions.5%"
+                                  ]
+                                },
+                                "summary": {
+                                  "type": "string",
+                                  "description": "%configuration.endpoints.models.thinking.auto.summary.description%",
+                                  "enum": [
+                                    "auto",
+                                    "concise",
+                                    "detailed"
+                                  ],
+                                  "enumDescriptions": [
+                                    "%configuration.endpoints.models.thinking.auto.summary.enumDescriptions.0%",
+                                    "%configuration.endpoints.models.thinking.auto.summary.enumDescriptions.1%",
+                                    "%configuration.endpoints.models.thinking.auto.summary.enumDescriptions.2%"
                                   ]
                                 }
                               },
@@ -898,17 +981,20 @@
   "devDependencies": {
     "@types/node": "^22",
     "@types/vscode": "^1.104.0",
+    "@types/ws": "^8.18.1",
     "@vscode/l10n-dev": "^0.0.35",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.73.0",
-    "@google/genai": "^1.40.0",
-    "@huggingface/tokenizers": "^0.1.1",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@google/genai": "^1.44.0",
+    "@huggingface/tokenizers": "^0.1.2",
     "@iarna/toml": "^2.2.5",
     "@vscode/l10n": "^0.0.18",
     "ollama": "^0.6.3",
-    "openai": "^6.18.0",
-    "tiktoken": "^1.0.22"
+    "openai": "^6.27.0",
+    "tiktoken": "^1.0.22",
+    "undici": "^7.22.0",
+    "ws": "^8.19.0"
   }
 }

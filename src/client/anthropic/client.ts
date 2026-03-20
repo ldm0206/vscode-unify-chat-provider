@@ -41,7 +41,10 @@ import { getBaseModelId } from '../../model-id-utils';
 import { DEFAULT_MAX_OUTPUT_TOKENS } from '../../defaults';
 import { ModelConfig, PerformanceTrace, ProviderConfig } from '../../types';
 import { TracksToolInput } from '@anthropic-ai/sdk/lib/BetaMessageStream';
-import { ThinkingBlockMetadata } from '../types';
+import {
+  ENCRYPTED_THINKING_PLACEHOLDER,
+  ThinkingBlockMetadata,
+} from '../types';
 import { FeatureId } from '../definitions';
 import {
   buildBaseUrl,
@@ -52,6 +55,7 @@ import {
   mergeHeaders,
   parseToolArguments,
   processUsage as sharedProcessUsage,
+  resolveAnthropicServiceTier,
   getToken,
   getUnifiedUserAgent,
   setUserAgentHeader,
@@ -63,6 +67,12 @@ import type { AuthTokenInfo } from '../../auth/types';
  */
 // TODO Citations support
 // TODO Context editing support
+type AnthropicThinkingContentType = 'content' | 'encrypted';
+
+type AnthropicThinkingOutputState = {
+  lastType?: AnthropicThinkingContentType;
+};
+
 export class AnthropicProvider implements ApiProvider {
   private readonly baseUrl: string;
 
@@ -94,10 +104,6 @@ export class AnthropicProvider implements ApiProvider {
     const effectiveTimeout =
       chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
-    const requestTimeoutMs = stream
-      ? effectiveTimeout.connection
-      : effectiveTimeout.response;
-
     const token = getToken(credential);
 
     return new Anthropic({
@@ -116,7 +122,8 @@ export class AnthropicProvider implements ApiProvider {
       baseURL: this.baseUrl,
       maxRetries: 0,
       fetch: createCustomFetch({
-        connectionTimeoutMs: requestTimeoutMs,
+        connectionTimeoutMs: effectiveTimeout.connection,
+        responseTimeoutMs: effectiveTimeout.response,
         logger,
         retryConfig: chatNetwork?.retry,
         type: mode,
@@ -791,12 +798,14 @@ export class AnthropicProvider implements ApiProvider {
       this.convertToolChoice(options.toolMode, tools, thinkingEnabled),
       model.parallelToolCalling,
     );
+    const serviceTier = resolveAnthropicServiceTier(this.config, model);
 
     try {
       let requestBase: Omit<MessageCreateParamsStreaming, 'stream'> = {
         model: getBaseModelId(model.id),
         messages: anthropicMessages,
         max_tokens: model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        ...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
       };
 
       Object.assign(requestBase, this.config.extraBody, model.extraBody);
@@ -937,6 +946,42 @@ export class AnthropicProvider implements ApiProvider {
     }
   }
 
+  private *emitThinkingText(
+    type: AnthropicThinkingContentType,
+    text: string,
+    emitMode: 'full' | 'metadata-only' | 'content-only',
+    metadata: ThinkingBlockMetadata | undefined,
+    state: AnthropicThinkingOutputState,
+    signature?: string,
+  ): Generator<vscode.LanguageModelThinkingPart> {
+    if (!text) {
+      return;
+    }
+
+    const prefix =
+      state.lastType !== undefined && state.lastType !== type ? '\n' : '';
+    const output =
+      prefix +
+      (type === 'encrypted' ? ENCRYPTED_THINKING_PLACEHOLDER : text);
+
+    if (emitMode !== 'metadata-only') {
+      yield new vscode.LanguageModelThinkingPart(output);
+    }
+
+    if (metadata) {
+      if (type === 'encrypted') {
+        metadata.redactedData = text;
+      } else {
+        metadata._completeThinking = (metadata._completeThinking || '') + text;
+      }
+      if (signature) {
+        metadata.signature = signature;
+      }
+    }
+
+    state.lastType = type;
+  }
+
   private async *parseMessage(
     message: Anthropic.Beta.Messages.BetaMessage,
     performanceTrace: PerformanceTrace,
@@ -959,13 +1004,20 @@ export class AnthropicProvider implements ApiProvider {
 
     performanceTrace.ttft =
       Date.now() - (performanceTrace.tts + performanceTrace.ttf);
+    const thinkingOutputState: AnthropicThinkingOutputState = {};
 
     for (const block of message.content) {
       switch (block.type) {
         case 'text':
           for (const segment of parseThinkingTags(block.text)) {
             if (segment.type === 'thinking') {
-              yield new vscode.LanguageModelThinkingPart(segment.content);
+              yield* this.emitThinkingText(
+                'content',
+                segment.content,
+                'full',
+                undefined,
+                thinkingOutputState,
+              );
             } else {
               yield new vscode.LanguageModelTextPart(segment.content);
             }
@@ -973,24 +1025,30 @@ export class AnthropicProvider implements ApiProvider {
           break;
 
         case 'thinking':
-          yield new vscode.LanguageModelThinkingPart(
+          yield* this.emitThinkingText(
+            'content',
             block.thinking,
+            'full',
             undefined,
-            {
-              signature: block.signature,
-              _completeThinking: block.thinking,
-            } satisfies ThinkingBlockMetadata,
+            thinkingOutputState,
           );
+          yield new vscode.LanguageModelThinkingPart('', undefined, {
+            signature: block.signature,
+            _completeThinking: block.thinking,
+          } satisfies ThinkingBlockMetadata);
           break;
 
         case 'redacted_thinking':
-          yield new vscode.LanguageModelThinkingPart(
-            'Encrypted thinking...',
+          yield* this.emitThinkingText(
+            'encrypted',
+            block.data,
+            'full',
             undefined,
-            {
-              redactedData: block.data,
-            } satisfies ThinkingBlockMetadata,
+            thinkingOutputState,
           );
+          yield new vscode.LanguageModelThinkingPart('', undefined, {
+            redactedData: block.data,
+          } satisfies ThinkingBlockMetadata);
           break;
 
         case 'tool_use':
@@ -1006,13 +1064,19 @@ export class AnthropicProvider implements ApiProvider {
           throw new Error(`Unsupported message block type: ${block.type}`);
       }
     }
-    yield encodeStatefulMarkerPart<{ raw: BetaMessage; userId?: string }>(
-      expectedIdentity,
-      {
-        raw,
-        userId: state.userId,
-      },
-    );
+
+    // Suppress purely empty responses (no content blocks) so callers see
+    // no parts at all instead of an empty message. The outer service
+    // treats Anthropic 0-part responses as valid and does not retry.
+    if (message.content.length > 0) {
+      yield encodeStatefulMarkerPart<{ raw: BetaMessage; userId?: string }>(
+        expectedIdentity,
+        {
+          raw,
+          userId: state.userId,
+        },
+      );
+    }
 
     if (message.usage) {
       this.processUsage(message.usage, performanceTrace, logger);
@@ -1032,6 +1096,7 @@ export class AnthropicProvider implements ApiProvider {
 
     const recordFirstToken = createFirstTokenRecorder(performanceTrace);
     const thinkingTagParser = new StreamingThinkingTagParser();
+    const thinkingOutputState: AnthropicThinkingOutputState = {};
 
     for await (const event of stream) {
       if (token.isCancellationRequested) {
@@ -1054,7 +1119,13 @@ export class AnthropicProvider implements ApiProvider {
             case 'text':
               for (const segment of thinkingTagParser.push(block.text)) {
                 if (segment.type === 'thinking') {
-                  yield new vscode.LanguageModelThinkingPart(segment.content);
+                  yield* this.emitThinkingText(
+                    'content',
+                    segment.content,
+                    'content-only',
+                    undefined,
+                    thinkingOutputState,
+                  );
                 } else {
                   yield new vscode.LanguageModelTextPart(segment.content);
                 }
@@ -1062,12 +1133,22 @@ export class AnthropicProvider implements ApiProvider {
               break;
 
             case 'thinking':
-              yield new vscode.LanguageModelThinkingPart(block.thinking);
+              yield* this.emitThinkingText(
+                'content',
+                block.thinking,
+                'content-only',
+                undefined,
+                thinkingOutputState,
+              );
               break;
 
             case 'redacted_thinking':
-              yield new vscode.LanguageModelThinkingPart(
-                'Encrypted thinking...',
+              yield* this.emitThinkingText(
+                'encrypted',
+                block.data,
+                'content-only',
+                undefined,
+                thinkingOutputState,
               );
               break;
 
@@ -1084,7 +1165,13 @@ export class AnthropicProvider implements ApiProvider {
             case 'text_delta':
               for (const segment of thinkingTagParser.push(block.text)) {
                 if (segment.type === 'thinking') {
-                  yield new vscode.LanguageModelThinkingPart(segment.content);
+                  yield* this.emitThinkingText(
+                    'content',
+                    segment.content,
+                    'content-only',
+                    undefined,
+                    thinkingOutputState,
+                  );
                 } else {
                   yield new vscode.LanguageModelTextPart(segment.content);
                 }
@@ -1092,7 +1179,13 @@ export class AnthropicProvider implements ApiProvider {
               break;
 
             case 'thinking_delta':
-              yield new vscode.LanguageModelThinkingPart(block.thinking);
+              yield* this.emitThinkingText(
+                'content',
+                block.thinking,
+                'content-only',
+                undefined,
+                thinkingOutputState,
+              );
               break;
 
             default:
@@ -1139,21 +1232,39 @@ export class AnthropicProvider implements ApiProvider {
         case 'message_stop': {
           for (const segment of thinkingTagParser.flush()) {
             if (segment.type === 'thinking') {
-              yield new vscode.LanguageModelThinkingPart(segment.content);
+              yield* this.emitThinkingText(
+                'content',
+                segment.content,
+                'content-only',
+                undefined,
+                thinkingOutputState,
+              );
             } else {
               yield new vscode.LanguageModelTextPart(segment.content);
             }
           }
 
-          yield encodeStatefulMarkerPart<{ raw: BetaMessage; userId?: string }>(
-            expectedIdentity,
-            {
+          // Suppress purely empty responses (no content blocks). This
+          // specifically handles Anthropic Messages streams where the
+          // provider emits only `message_start` + `message_delta` (usage
+          // / stop_reason) + `message_stop` with an empty `content` array.
+          // In that case there is no assistant text or tool output, and
+          // Copilot Chat would otherwise see an "empty" assistant message
+          // (because only our internal stateful marker is emitted) and
+          // treat it as an error. By not emitting the marker when
+          // `raw.content` is empty, the outer service sees a 0-part
+          // response and accepts it as a valid no-op completion.
+          if (raw && raw.content.length > 0) {
+            yield encodeStatefulMarkerPart<{
+              raw: BetaMessage;
+              userId?: string;
+            }>(expectedIdentity, {
               raw,
               userId: state.userId,
-            },
-          );
+            });
+          }
 
-          if (raw.usage) {
+          if (raw?.usage) {
             this.processUsage(raw.usage, performanceTrace, logger);
           }
           break;
@@ -1179,7 +1290,13 @@ export class AnthropicProvider implements ApiProvider {
 
     for (const segment of thinkingTagParser.flush()) {
       if (segment.type === 'thinking') {
-        yield new vscode.LanguageModelThinkingPart(segment.content);
+        yield* this.emitThinkingText(
+          'content',
+          segment.content,
+          'content-only',
+          undefined,
+          thinkingOutputState,
+        );
       } else {
         yield new vscode.LanguageModelTextPart(segment.content);
       }

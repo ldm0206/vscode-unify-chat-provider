@@ -7,12 +7,19 @@ import {
 } from './config-ops';
 import { normalizeBaseUrlInput } from './utils';
 import { PROVIDER_KEYS, ProviderType } from './client/definitions';
-import { ContextCacheConfig, ModelConfig, ProviderConfig } from './types';
+import { getRenamedProviderType } from './secret/migration';
+import {
+  ContextCacheConfig,
+  ModelConfig,
+  ProviderConfig,
+  ServiceTier,
+} from './types';
 
 const CONFIG_NAMESPACE = 'unifyChatProvider';
 const DEFAULT_BALANCE_REFRESH_INTERVAL_MS = 60_000;
 const DEFAULT_BALANCE_THROTTLE_WINDOW_MS = 10_000;
 const DEFAULT_BALANCE_STATUS_BAR_ICON = '$(credit-card)';
+const DEFAULT_MODEL_DISPLAY_NAME_TEMPLATE = '{modelName}';
 const MIN_BALANCE_REFRESH_INTERVAL_MS = 1_000;
 const MIN_BALANCE_THROTTLE_WINDOW_MS = 0;
 const DEFAULT_BALANCE_WARNING_ENABLED = true;
@@ -25,6 +32,7 @@ const MIN_BALANCE_WARNING_TOKEN_THRESHOLD_MILLIONS = 0;
 const GLOBAL_ONLY_CONFIG_KEYS = [
   'endpoints',
   'verbose',
+  'modelDisplayNameTemplate',
   'storeApiKeyInSettings',
   'balanceRefreshIntervalMs',
   'balanceThrottleWindowMs',
@@ -40,6 +48,7 @@ const GLOBAL_ONLY_CONFIG_KEYS = [
  */
 export interface ExtensionConfiguration {
   endpoints: ProviderConfig[];
+  modelDisplayNameTemplate: string;
   storeApiKeyInSettings: boolean;
   balanceRefreshIntervalMs: number;
   balanceThrottleWindowMs: number;
@@ -114,6 +123,11 @@ export class ConfigStore {
   get verbose(): boolean {
     const rawVerbose = this.readGlobalUnknown('verbose');
     return typeof rawVerbose === 'boolean' ? rawVerbose : false;
+  }
+
+  get modelDisplayNameTemplate(): string {
+    const raw = this.readGlobalUnknown('modelDisplayNameTemplate');
+    return typeof raw === 'string' ? raw : DEFAULT_MODEL_DISPLAY_NAME_TEMPLATE;
   }
 
   /**
@@ -201,6 +215,7 @@ export class ConfigStore {
   get configuration(): ExtensionConfiguration {
     return {
       endpoints: this.endpoints,
+      modelDisplayNameTemplate: this.modelDisplayNameTemplate,
       storeApiKeyInSettings: this.storeApiKeyInSettings,
       balanceRefreshIntervalMs: this.balanceRefreshIntervalMs,
       balanceThrottleWindowMs: this.balanceThrottleWindowMs,
@@ -313,13 +328,15 @@ export class ConfigStore {
       .filter((m): m is ModelConfig => m !== null);
 
     // Parse and validate type
-    if (
-      typeof obj.type !== 'string' ||
-      !PROVIDER_KEYS.includes(obj.type as ProviderType)
-    ) {
+    const rawType = obj.type;
+    if (typeof rawType !== 'string') {
       return null;
     }
-    const type = obj.type as ProviderType;
+    const renamedType = getRenamedProviderType(rawType) ?? rawType;
+    if (!PROVIDER_KEYS.includes(renamedType as ProviderType)) {
+      return null;
+    }
+    const type = renamedType as ProviderType;
 
     const provider: ProviderConfig = {
       type,
@@ -339,11 +356,45 @@ export class ConfigStore {
       ] as const),
     );
 
+    provider.transport = this.normalizeTransportMode(provider.transport);
+    provider.serviceTier = this.normalizeServiceTier(provider.serviceTier);
     provider.extraHeaders = this.normalizeStringRecord(provider.extraHeaders);
     provider.extraBody = this.normalizeObjectRecord(provider.extraBody);
-    provider.contextCache = this.normalizeContextCacheConfig(provider.contextCache);
+    provider.contextCache = this.normalizeContextCacheConfig(
+      provider.contextCache,
+    );
+
+    const legacyApiKey = obj.apiKey;
+    if (
+      provider.auth === undefined &&
+      typeof legacyApiKey === 'string' &&
+      legacyApiKey.trim()
+    ) {
+      provider.auth = { method: 'api-key', apiKey: legacyApiKey };
+    }
 
     return provider;
+  }
+
+  private normalizeTransportMode(
+    raw: unknown,
+  ): ProviderConfig['transport'] | undefined {
+    return raw === 'auto' || raw === 'sse' || raw === 'websocket'
+      ? raw
+      : undefined;
+  }
+
+  private normalizeServiceTier(raw: unknown): ServiceTier | undefined {
+    switch (raw) {
+      case 'auto':
+      case 'standard':
+      case 'flex':
+      case 'scale':
+      case 'priority':
+        return raw;
+      default:
+        return undefined;
+    }
   }
 
   private normalizeContextCacheConfig(
@@ -424,6 +475,7 @@ export class ConfigStore {
           withoutKeys(MODEL_CONFIG_KEYS, ['id'] as const),
         );
 
+        model.serviceTier = this.normalizeServiceTier(model.serviceTier);
         model.extraHeaders = this.normalizeStringRecord(model.extraHeaders);
         model.extraBody = this.normalizeObjectRecord(model.extraBody);
 
@@ -447,7 +499,11 @@ export class ConfigStore {
    */
   async setEndpoints(endpoints: ProviderConfig[]): Promise<void> {
     const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+    await config.update(
+      'endpoints',
+      endpoints,
+      vscode.ConfigurationTarget.Global,
+    );
   }
 
   /**
@@ -455,7 +511,11 @@ export class ConfigStore {
    */
   async setRawEndpoints(endpoints: unknown[]): Promise<void> {
     const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+    await config.update(
+      'endpoints',
+      endpoints,
+      vscode.ConfigurationTarget.Global,
+    );
   }
 
   /**

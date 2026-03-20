@@ -43,6 +43,7 @@ import {
   getToken,
   getTokenType,
   mergeHeaders,
+  normalizeToolInputSchema,
   processUsage as sharedProcessUsage,
 } from '../utils';
 
@@ -86,20 +87,16 @@ export class OllamaProvider implements ApiProvider {
     abortSignal?: AbortSignal,
     mode: FetchMode = 'chat',
   ): Ollama {
-    const streamEnabled = stream ?? true;
     const chatNetwork =
       mode === 'chat' ? resolveChatNetwork(this.config) : undefined;
     const effectiveTimeout =
       chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
-    const requestTimeoutMs = streamEnabled
-      ? effectiveTimeout.connection
-      : effectiveTimeout.response;
-
     return new Ollama({
       host: this.baseUrl,
       fetch: createCustomFetch({
-        connectionTimeoutMs: requestTimeoutMs,
+        connectionTimeoutMs: effectiveTimeout.connection,
+        responseTimeoutMs: effectiveTimeout.response,
         logger,
         retryConfig: chatNetwork?.retry,
         type: mode,
@@ -390,11 +387,8 @@ export class OllamaProvider implements ApiProvider {
       function: {
         name: tool.name,
         description: tool.description,
-        parameters: (tool.inputSchema as Tool['function']['parameters']) ?? {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
+        parameters:
+          normalizeToolInputSchema(tool.inputSchema) as Tool['function']['parameters'],
       },
     }));
   }
@@ -514,7 +508,8 @@ export class OllamaProvider implements ApiProvider {
 
     try {
       if (streamEnabled) {
-        const responseTimeoutMs = resolveChatNetwork(this.config).timeout.response;
+        const responseTimeoutMs = resolveChatNetwork(this.config).timeout
+          .response;
 
         stream = await client.chat({ ...baseBody, stream: true });
         const timedStream = withIdleTimeout(
@@ -531,7 +526,12 @@ export class OllamaProvider implements ApiProvider {
         );
       } else {
         const result = await client.chat({ ...baseBody, stream: false });
-        yield* this.parseMessage(result, performanceTrace, logger, expectedIdentity);
+        yield* this.parseMessage(
+          result,
+          performanceTrace,
+          logger,
+          expectedIdentity,
+        );
       }
     } finally {
       cancellationListener.dispose();

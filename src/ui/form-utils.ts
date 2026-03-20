@@ -13,8 +13,9 @@ import {
 } from '../config-ops';
 import { normalizeBaseUrlInput } from '../utils';
 import { showValidationErrors } from './component';
-import type { BalanceSnapshot } from '../balance/types';
+import type { BalanceMetric, BalanceSnapshot } from '../balance/types';
 import {
+  formatProviderBadgeSuffix,
   formatProviderDetail as formatStructuredProviderDetail,
   formatSnapshotLines,
   formatSummaryLine,
@@ -265,6 +266,60 @@ export function formatProviderDetail(
   return formatStructuredProviderDetail(providerName, snapshot);
 }
 
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
+}
+
+function toRemainingPercentMetric(metric: BalanceMetric): BalanceMetric {
+  if (metric.type !== 'percent' || metric.basis !== 'used') {
+    return metric;
+  }
+
+  return {
+    ...metric,
+    value: clampPercent(100 - metric.value),
+    basis: 'remaining',
+  };
+}
+
+function normalizeBalanceSnapshotForModelSelection(
+  snapshot: BalanceSnapshot | undefined,
+): BalanceSnapshot | undefined {
+  if (!snapshot) {
+    return undefined;
+  }
+
+  let changed = false;
+  const items = snapshot.items.map((item) => {
+    const normalized = toRemainingPercentMetric(item);
+    if (normalized !== item) {
+      changed = true;
+    }
+    return normalized;
+  });
+
+  return changed ? { ...snapshot, items } : snapshot;
+}
+
+export function formatProviderDetailForModelSelection(
+  providerName: string,
+  snapshot: BalanceSnapshot | undefined,
+): string {
+  const normalizedSnapshot = normalizeBalanceSnapshotForModelSelection(snapshot);
+  return formatStructuredProviderDetail(providerName, normalizedSnapshot);
+}
+
+export function formatProviderBadgeSuffixForModelSelection(
+  snapshot: BalanceSnapshot | undefined,
+): string {
+  return formatProviderBadgeSuffix(
+    normalizeBalanceSnapshotForModelSelection(snapshot),
+  );
+}
+
 export function formatModelTooltip(
   provider: ProviderConfig,
   model: ModelConfig,
@@ -294,6 +349,18 @@ export function formatModelTooltip(
   }
 
   return lines.join('\n');
+}
+
+export function formatModelTooltipForModelSelection(
+  provider: ProviderConfig,
+  model: ModelConfig,
+  snapshot: BalanceSnapshot | undefined,
+): string | undefined {
+  return formatModelTooltip(
+    provider,
+    model,
+    normalizeBalanceSnapshotForModelSelection(snapshot),
+  );
 }
 
 function formatCapabilities(model: ModelConfig): string {

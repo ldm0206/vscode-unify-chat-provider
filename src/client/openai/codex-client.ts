@@ -1,22 +1,26 @@
 import OpenAI from 'openai';
 import * as vscode from 'vscode';
 import type { AuthTokenInfo } from '../../auth/types';
-import type { ProviderHttpLogger, RequestLogger } from '../../logger';
+import type { ProviderHttpLogger } from '../../logger';
 import {
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   FetchMode,
   buildOpencodeUserAgent,
   resolveChatNetwork,
+  resolveOpenAISdkTimeoutMs,
 } from '../../utils';
-import type { ModelConfig, PerformanceTrace } from '../../types';
+import type { ModelConfig } from '../../types';
 import { createCustomFetch, getToken } from '../utils';
 import { OpenAIResponsesProvider } from './responses-client';
 import { randomBytes } from 'crypto';
-import { OPENCODE_CODEX_INSTRUCTIONS } from './codex-instructions';
-import type { ResponseCreateParamsBase } from 'openai/resources/responses/responses';
+import type {
+  ResponseCreateParamsBase,
+  ResponsesClientEvent,
+} from 'openai/resources/responses/responses';
 
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses';
 const CODEX_ORIGINATOR = 'opencode';
+const CODEX_RESPONSES_WEBSOCKET_BETA = 'responses_websockets=2026-02-06';
 const OPENCODE_SESSION_ID_PREFIX = 'ses_';
 const OPENCODE_SESSION_ID_RANDOM_LENGTH = 14;
 
@@ -55,6 +59,81 @@ function createOpencodeSessionId(): string {
   )}`;
 }
 
+function buildOpencodeVersion(userAgent = buildOpencodeUserAgent()): string {
+  const [identifier] = userAgent.split(' ', 1);
+  const slashIndex = identifier.indexOf('/');
+  if (slashIndex === -1) {
+    return identifier;
+  }
+  return identifier.slice(slashIndex + 1);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isResponsesClientEvent(value: unknown): value is ResponsesClientEvent {
+  return isRecord(value) && typeof value['type'] === 'string';
+}
+
+function deleteHeaderVariants(
+  headers: Record<string, string>,
+  name: string,
+): void {
+  const needle = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === needle) {
+      delete headers[key];
+    }
+  }
+}
+
+function resolveCodexWebSocketBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, '');
+
+  for (const suffix of [
+    '/responses/v1',
+    '/v1/responses',
+    '/responses',
+    '/v1',
+  ]) {
+    if (normalized.endsWith(suffix)) {
+      return normalized.slice(0, -suffix.length);
+    }
+  }
+
+  return normalized;
+}
+
+function stripInputItemIdsFromWebSocketPayload(
+  payload: ResponsesClientEvent,
+): ResponsesClientEvent {
+  if (payload.type !== 'response.create') {
+    return payload;
+  }
+
+  const parsed: unknown = JSON.parse(JSON.stringify(payload));
+  if (!isRecord(parsed) || parsed['type'] !== 'response.create') {
+    return payload;
+  }
+
+  const input = parsed['input'];
+  if (!Array.isArray(input)) {
+    return payload;
+  }
+
+  parsed['input'] = input.map((item) => {
+    if (!isRecord(item) || !Object.prototype.hasOwnProperty.call(item, 'id')) {
+      return item;
+    }
+
+    const { id: _id, ...rest } = item;
+    return rest;
+  });
+
+  return isResponsesClientEvent(parsed) ? parsed : payload;
+}
+
 function sanitizeCodexHeaders(headersInit: HeadersInit | undefined): Headers {
   const headers = new Headers(headersInit);
   const toDelete: string[] = [];
@@ -78,17 +157,38 @@ function sanitizeCodexHeaders(headersInit: HeadersInit | undefined): Headers {
 }
 
 export class OpenAICodexProvider extends OpenAIResponsesProvider {
+  protected override getInputMessageRole(
+    role: vscode.LanguageModelChatMessageRole,
+  ) {
+    if (role === vscode.LanguageModelChatMessageRole.System) {
+      return 'developer';
+    }
+    return super.getInputMessageRole(role);
+  }
+
   protected override buildHeaders(
     sessionId: string,
     credential?: AuthTokenInfo,
     modelConfig?: ModelConfig,
+    _messages?: readonly vscode.LanguageModelChatRequestMessage[],
   ): Record<string, string> {
     const headers = super.buildHeaders(sessionId, credential, modelConfig);
+    const userAgent = buildOpencodeUserAgent();
+
+    deleteHeaderVariants(headers, 'accept');
+    deleteHeaderVariants(headers, 'user-agent');
+    deleteHeaderVariants(headers, 'originator');
+    deleteHeaderVariants(headers, 'session_id');
+    deleteHeaderVariants(headers, 'conversation_id');
+    deleteHeaderVariants(headers, 'version');
+    deleteHeaderVariants(headers, 'chatgpt-account-id');
 
     headers['Accept'] = '*/*';
-    headers['User-Agent'] = buildOpencodeUserAgent();
-    headers['originator'] = CODEX_ORIGINATOR;
-    headers['session_id'] = sessionId;
+    headers['User-Agent'] = userAgent;
+    headers['Originator'] = CODEX_ORIGINATOR;
+    headers['Session_id'] = sessionId;
+    headers['Conversation_id'] = sessionId;
+    headers['Version'] = buildOpencodeVersion(userAgent);
 
     const auth = this.config.auth;
     if (auth?.method === 'openai-codex') {
@@ -101,8 +201,42 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
     return headers;
   }
 
+  protected override buildWebSocketHeaders(
+    sessionId: string,
+    credential?: AuthTokenInfo,
+    modelConfig?: ModelConfig,
+    messages?: readonly vscode.LanguageModelChatRequestMessage[],
+  ): Record<string, string> {
+    const headers = this.buildHeaders(
+      sessionId,
+      credential,
+      modelConfig,
+      messages,
+    );
+    const existingBeta =
+      headers['OpenAI-Beta'] ?? headers['openai-beta'] ?? undefined;
+
+    deleteHeaderVariants(headers, 'openai-beta');
+    headers['OpenAI-Beta'] =
+      existingBeta && existingBeta.includes('responses_websockets=')
+        ? existingBeta
+        : CODEX_RESPONSES_WEBSOCKET_BETA;
+
+    return headers;
+  }
+
   protected generateSessionId(): string {
     return createOpencodeSessionId();
+  }
+
+  protected override resolveWebSocketBaseUrl(client: OpenAI): string {
+    return resolveCodexWebSocketBaseUrl(client.baseURL);
+  }
+
+  protected override transformWebSocketRequestPayload(
+    payload: ResponsesClientEvent,
+  ): ResponsesClientEvent {
+    return stripInputItemIdsFromWebSocketPayload(payload);
   }
 
   protected override handleRequest(
@@ -112,7 +246,7 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
     Object.assign(baseBody, {
       store: false,
       prompt_cache_key: sessionId,
-      instructions: OPENCODE_CODEX_INSTRUCTIONS,
+      instructions: '',
     });
   }
 
@@ -128,14 +262,13 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
     const effectiveTimeout =
       chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
-    const requestTimeoutMs = stream
-      ? effectiveTimeout.connection
-      : effectiveTimeout.response;
+    const sdkTimeoutMs = resolveOpenAISdkTimeoutMs(effectiveTimeout, stream);
 
     const token = getToken(credential);
 
     const baseFetch = createCustomFetch({
-      connectionTimeoutMs: requestTimeoutMs,
+      connectionTimeoutMs: effectiveTimeout.connection,
+      responseTimeoutMs: effectiveTimeout.response,
       logger,
       retryConfig: chatNetwork?.retry,
       urlTransformer:
@@ -164,6 +297,7 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
       apiKey: token ?? '',
       baseURL: this.baseUrl,
       maxRetries: 0,
+      timeout: sdkTimeoutMs,
       fetch: transformedFetch,
     });
   }
@@ -175,66 +309,12 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
       { id: 'gpt-5.1-codex-max', maxOutputTokens: undefined },
       { id: 'gpt-5.1-codex-mini', maxOutputTokens: undefined },
       { id: 'gpt-5.2', maxOutputTokens: undefined },
+      { id: 'gpt-5.4', maxOutputTokens: undefined },
       { id: 'gpt-5.2-codex', maxOutputTokens: undefined },
       { id: 'gpt-5.3-codex', maxOutputTokens: undefined },
       { id: 'gpt-5.3-codex-spark', maxOutputTokens: undefined },
       { id: 'gpt-5.1-codex', maxOutputTokens: undefined },
     ];
-  }
-
-  override async *streamChat(
-    encodedModelId: string,
-    model: ModelConfig,
-    messages: readonly vscode.LanguageModelChatRequestMessage[],
-    options: vscode.ProvideLanguageModelChatResponseOptions,
-    performanceTrace: PerformanceTrace,
-    token: vscode.CancellationToken,
-    logger: RequestLogger,
-    credential: AuthTokenInfo,
-  ): AsyncGenerator<vscode.LanguageModelResponsePart2> {
-    const systemTextParts: string[] = [];
-    for (const message of messages) {
-      if (message.role !== vscode.LanguageModelChatMessageRole.System) {
-        continue;
-      }
-      for (const part of message.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          const text = part.value.trim();
-          if (text) {
-            systemTextParts.push(text);
-          }
-        }
-      }
-    }
-
-    const systemAsUserText =
-      systemTextParts.length > 0 ? systemTextParts.join('\n\n') : undefined;
-
-    const codexMessages: vscode.LanguageModelChatRequestMessage[] = messages
-      .filter(
-        (message) =>
-          message.role !== vscode.LanguageModelChatMessageRole.System,
-      )
-      .slice();
-
-    if (systemAsUserText) {
-      codexMessages.unshift({
-        role: vscode.LanguageModelChatMessageRole.User,
-        name: undefined,
-        content: [new vscode.LanguageModelTextPart(systemAsUserText)],
-      });
-    }
-
-    yield* super.streamChat(
-      encodedModelId,
-      model,
-      codexMessages,
-      options,
-      performanceTrace,
-      token,
-      logger,
-      credential,
-    );
   }
 }
 

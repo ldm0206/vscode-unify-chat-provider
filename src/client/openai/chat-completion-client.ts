@@ -23,6 +23,7 @@ import {
   parseThinkingTags,
   resolveContextCacheConfig,
   resolveChatNetwork,
+  resolveOpenAISdkTimeoutMs,
   sanitizeMessagesForModelSwitch,
   StreamingThinkingTagParser,
   withIdleTimeout,
@@ -38,8 +39,10 @@ import {
   isFeatureSupported,
   isFeatureSupportedByProvider,
   mergeHeaders,
+  normalizeToolInputSchema,
   parseToolArguments,
   processUsage as sharedProcessUsage,
+  resolveOpenAIServiceTier,
   setUserAgentHeader,
 } from '../utils';
 import * as vscode from 'vscode';
@@ -62,7 +65,10 @@ import { FunctionParameters } from 'openai/resources/shared';
 import { getBaseModelId } from '../../model-id-utils';
 import { CompletionUsage } from 'openai/resources/completions';
 import { ChatCompletionSnapshot } from 'openai/lib/ChatCompletionStream';
-import { ThinkingBlockMetadata } from '../types';
+import {
+  ENCRYPTED_THINKING_PLACEHOLDER,
+  ThinkingBlockMetadata,
+} from '../types';
 import { FeatureId } from '../definitions';
 
 /**
@@ -84,6 +90,12 @@ type ReasoningParamType =
   | 'disable_reasoning'
   | 'enable_thinking'
   | 'enable_thinking_with_budget';
+
+type OpenRouterThinkingContentType = 'summary' | 'encrypted' | 'content';
+
+type OpenRouterThinkingOutputState = {
+  lastType?: OpenRouterThinkingContentType;
+};
 
 export class OpenAIChatCompletionProvider implements ApiProvider {
   protected readonly baseUrl: string;
@@ -141,9 +153,7 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
     const effectiveTimeout =
       chatNetwork?.timeout ?? DEFAULT_NORMAL_TIMEOUT_CONFIG;
 
-    const requestTimeoutMs = stream
-      ? effectiveTimeout.connection
-      : effectiveTimeout.response;
+    const sdkTimeoutMs = resolveOpenAISdkTimeoutMs(effectiveTimeout, stream);
 
     const token = getToken(credential);
 
@@ -151,8 +161,10 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
       apiKey: token ?? '',
       baseURL: this.baseUrl,
       maxRetries: 0,
+      timeout: sdkTimeoutMs,
       fetch: createCustomFetch({
-        connectionTimeoutMs: requestTimeoutMs,
+        connectionTimeoutMs: effectiveTimeout.connection,
+        responseTimeoutMs: effectiveTimeout.response,
         logger,
         retryConfig: chatNetwork?.retry,
         type: mode,
@@ -505,11 +517,8 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
           function: {
             name: tool.name,
             description: tool.description,
-            parameters: (tool.inputSchema ?? {
-              type: 'object',
-              properties: {},
-              required: [],
-            }) as FunctionParameters,
+            parameters:
+              normalizeToolInputSchema(tool.inputSchema) as FunctionParameters,
           },
         }) as ChatCompletionFunctionTool,
     );
@@ -847,11 +856,13 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
     const streamEnabled = model.stream ?? true;
 
     const headers = this.buildHeaders(credential, model, sanitizedMessages);
+    const serviceTier = resolveOpenAIServiceTier(this.config, model);
 
     const baseBody: ChatCompletionCreateParamsBase = {
       model: getBaseModelId(model.id),
       messages: convertedMessages,
       ...this.buildReasoningParams(model, thinkingParamType),
+      ...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
       ...(useTopK && model.topK !== undefined ? { top_k: model.topK } : {}),
       ...(useClearThinking ? { clear_thinking: false } : {}),
       ...(useReasoningSplitParam ? { reasoning_split: true } : {}),
@@ -970,13 +981,20 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
 
     const raw = choice.message;
     const { content, tool_calls } = raw;
+    const thinkingOutputState: OpenRouterThinkingOutputState = {};
 
-    yield* this.extractThinkingParts(raw);
+    yield* this.extractThinkingParts(raw, 'full', undefined, thinkingOutputState);
 
     if (content) {
       for (const segment of parseThinkingTags(content)) {
         if (segment.type === 'thinking') {
-          yield new vscode.LanguageModelThinkingPart(segment.content);
+          yield* this.emitThinkingText(
+            'content',
+            segment.content,
+            'full',
+            undefined,
+            thinkingOutputState,
+          );
         } else {
           yield new vscode.LanguageModelTextPart(segment.content);
         }
@@ -1055,6 +1073,42 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
     return undefined;
   }
 
+  private *emitThinkingText(
+    type: OpenRouterThinkingContentType,
+    text: string,
+    emitMode: 'full' | 'metadata-only' | 'content-only',
+    metadata: ThinkingBlockMetadata | undefined,
+    state: OpenRouterThinkingOutputState,
+    signature?: string | null,
+  ): Generator<vscode.LanguageModelThinkingPart> {
+    if (!text) {
+      return;
+    }
+
+    const prefix =
+      state.lastType !== undefined && state.lastType !== type ? '\n' : '';
+    const output =
+      prefix +
+      (type === 'encrypted' ? ENCRYPTED_THINKING_PLACEHOLDER : text);
+
+    if (emitMode !== 'metadata-only') {
+      yield new vscode.LanguageModelThinkingPart(output);
+    }
+
+    if (metadata) {
+      if (type === 'encrypted') {
+        metadata.redactedData = text;
+      } else {
+        metadata._completeThinking = (metadata._completeThinking || '') + text;
+      }
+      if (signature) {
+        metadata.signature = signature;
+      }
+    }
+
+    state.lastType = type;
+  }
+
   private *extractThinkingParts(
     message:
       | ChatCompletionMessage
@@ -1062,6 +1116,7 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
       | ChatCompletionSnapshot.Choice.Message,
     emitMode: 'full' | 'metadata-only' | 'content-only' = 'full',
     metadata?: ThinkingBlockMetadata,
+    state: OpenRouterThinkingOutputState = {},
   ): Generator<vscode.LanguageModelThinkingPart> {
     const contents = this.normalizeThinkingContents(message);
 
@@ -1076,35 +1131,34 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
     for (const content of contents) {
       switch (content.type) {
         case 'reasoning.summary':
-          if (emitMode !== 'metadata-only') {
-            yield new vscode.LanguageModelThinkingPart(content.summary);
-          }
-          if (metadata) {
-            metadata._completeThinking =
-              (metadata._completeThinking || '') + content.summary;
-          }
+          yield* this.emitThinkingText(
+            'summary',
+            content.summary,
+            emitMode,
+            metadata,
+            state,
+          );
           break;
 
         case 'reasoning.text':
-          if (emitMode !== 'metadata-only') {
-            yield new vscode.LanguageModelThinkingPart(content.text);
-          }
-          if (metadata) {
-            metadata._completeThinking =
-              (metadata._completeThinking || '') + content.text;
-            if (content.signature) {
-              metadata.signature = content.signature;
-            }
-          }
+          yield* this.emitThinkingText(
+            'content',
+            content.text,
+            emitMode,
+            metadata,
+            state,
+            content.signature,
+          );
           break;
 
         case 'reasoning.encrypted':
-          if (emitMode !== 'metadata-only') {
-            yield new vscode.LanguageModelThinkingPart('Encrypted thinking...');
-          }
-          if (metadata) {
-            metadata.redactedData = content.data;
-          }
+          yield* this.emitThinkingText(
+            'encrypted',
+            content.data,
+            emitMode,
+            metadata,
+            state,
+          );
           break;
 
         default:
@@ -1137,6 +1191,7 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
 
     const recordFirstToken = createFirstTokenRecorder(performanceTrace);
     const thinkingTagParser = new StreamingThinkingTagParser();
+    const thinkingOutputState: OpenRouterThinkingOutputState = {};
 
     for await (const event of stream) {
       if (token.isCancellationRequested) {
@@ -1159,13 +1214,24 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
       recordFirstToken();
 
       if (delta) {
-        yield* this.extractThinkingParts(delta, 'content-only');
+        yield* this.extractThinkingParts(
+          delta,
+          'content-only',
+          undefined,
+          thinkingOutputState,
+        );
       }
 
       if (content) {
         for (const segment of thinkingTagParser.push(content)) {
           if (segment.type === 'thinking') {
-            yield new vscode.LanguageModelThinkingPart(segment.content);
+            yield* this.emitThinkingText(
+              'content',
+              segment.content,
+              'content-only',
+              undefined,
+              thinkingOutputState,
+            );
           } else {
             yield new vscode.LanguageModelTextPart(segment.content);
           }
@@ -1186,7 +1252,13 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
 
         for (const segment of thinkingTagParser.flush()) {
           if (segment.type === 'thinking') {
-            yield new vscode.LanguageModelThinkingPart(segment.content);
+            yield* this.emitThinkingText(
+              'content',
+              segment.content,
+              'content-only',
+              undefined,
+              thinkingOutputState,
+            );
           } else {
             yield new vscode.LanguageModelTextPart(segment.content);
           }
@@ -1212,7 +1284,7 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
             role: 'assistant',
             ...(content ? { content } : {}),
             ...(refusal ? { refusal } : {}),
-            ...(tool_calls ? { tool_calls } : {}),
+            ...(tool_calls && tool_calls.length > 0 ? { tool_calls } : {}),
             ...(reasoning ? { reasoning } : {}),
             ...(reasoning_content ? { reasoning_content } : {}),
             ...(reasoning_details ? { reasoning_details } : {}),
@@ -1223,7 +1295,13 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
 
     for (const segment of thinkingTagParser.flush()) {
       if (segment.type === 'thinking') {
-        yield new vscode.LanguageModelThinkingPart(segment.content);
+        yield* this.emitThinkingText(
+          'content',
+          segment.content,
+          'content-only',
+          undefined,
+          thinkingOutputState,
+        );
       } else {
         yield new vscode.LanguageModelTextPart(segment.content);
       }

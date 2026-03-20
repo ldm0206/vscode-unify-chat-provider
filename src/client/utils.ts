@@ -5,6 +5,8 @@ import type {
   RequestLogger,
 } from '../logger';
 import * as vscode from 'vscode';
+import { Agent } from 'undici';
+import type { Dispatcher } from 'undici';
 import type { AuthTokenInfo } from '../auth/types';
 import { ModelConfig, PerformanceTrace, ProviderConfig } from '../types';
 import {
@@ -305,6 +307,47 @@ export function mergeHeaders(
   return result;
 }
 
+export function resolveOpenAIServiceTier(
+  provider: ProviderConfig,
+  model: ModelConfig,
+): 'auto' | 'default' | 'flex' | 'scale' | 'priority' | undefined {
+  const serviceTier = model.serviceTier ?? provider.serviceTier;
+
+  switch (serviceTier) {
+    case 'auto':
+      return 'auto';
+    case 'standard':
+      return 'default';
+    case 'flex':
+      return 'flex';
+    case 'scale':
+      return 'scale';
+    case 'priority':
+      return 'priority';
+    default:
+      return undefined;
+  }
+}
+
+export function resolveAnthropicServiceTier(
+  provider: ProviderConfig,
+  model: ModelConfig,
+): 'auto' | 'standard_only' | undefined {
+  const serviceTier = model.serviceTier ?? provider.serviceTier;
+
+  switch (serviceTier) {
+    case 'auto':
+      return 'auto';
+    case 'standard':
+    case 'flex':
+    case 'scale':
+    case 'priority':
+      return 'standard_only';
+    default:
+      return undefined;
+  }
+}
+
 const HEADER_VALUE_PLACEHOLDER_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
 
 /**
@@ -407,11 +450,124 @@ export function parseToolArguments(
   }
 }
 
+function isToolSchemaRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeToolSchemaType(value: unknown): string | undefined {
+  const normalize = (input: string): string | undefined => {
+    const trimmed = input.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  if (typeof value === 'string') {
+    return normalize(value);
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+
+    const normalized = normalize(item);
+    if (normalized && normalized !== 'null') {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeToolSchemaValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeToolSchemaValue(item));
+  }
+
+  if (!isToolSchemaRecord(value)) {
+    return value;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    out[key] = normalizeToolSchemaValue(child);
+  }
+
+  const properties = out['properties'];
+  const items = out['items'];
+  const normalizedType = normalizeToolSchemaType(out['type']);
+
+  if (items !== undefined) {
+    out['type'] = 'array';
+  } else if (isToolSchemaRecord(properties)) {
+    out['type'] = 'object';
+  } else if (normalizedType !== undefined) {
+    out['type'] = normalizedType;
+  } else {
+    delete out['type'];
+  }
+
+  if (Array.isArray(out['required']) && isToolSchemaRecord(properties)) {
+    const propertyNames = new Set(Object.keys(properties));
+    const required = out['required'].filter(
+      (item): item is string =>
+        typeof item === 'string' && propertyNames.has(item),
+    );
+
+    if (required.length > 0) {
+      out['required'] = required;
+    } else {
+      delete out['required'];
+    }
+  } else if (out['required'] !== undefined) {
+    delete out['required'];
+  }
+
+  return out;
+}
+
+export function normalizeToolInputSchema(
+  schema: object | undefined,
+): Record<string, unknown> {
+  const normalized = normalizeToolSchemaValue(schema);
+  const out = isToolSchemaRecord(normalized) ? { ...normalized } : {};
+  const properties = isToolSchemaRecord(out['properties'])
+    ? { ...out['properties'] }
+    : {};
+  const requiredRaw = out['required'];
+
+  out['type'] = 'object';
+  out['properties'] = properties;
+  delete out['items'];
+
+  if (Array.isArray(requiredRaw)) {
+    const propertyNames = new Set(Object.keys(properties));
+    const required = requiredRaw.filter(
+      (item): item is string =>
+        typeof item === 'string' && propertyNames.has(item),
+    );
+
+    if (required.length > 0) {
+      out['required'] = required;
+    } else {
+      delete out['required'];
+    }
+  } else {
+    delete out['required'];
+  }
+
+  return out;
+}
+
 /**
  * Options for creating a custom fetch function.
  */
 export interface CreateCustomFetchOptions {
   connectionTimeoutMs: number;
+  responseTimeoutMs?: number;
   logger?: ProviderHttpLogger;
   urlTransformer?: (url: string) => string;
   retryConfig?: RetryConfig;
@@ -423,6 +579,22 @@ export interface CreateCustomFetchOptions {
   abortSignal?: AbortSignal;
 }
 
+const MAX_SAFE_FETCH_TIMEOUT_MS = 0x7fffffff;
+
+function normalizeFetchTimeoutMs(
+  timeoutMs: number | undefined,
+): number | undefined {
+  if (
+    timeoutMs === undefined ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0
+  ) {
+    return undefined;
+  }
+
+  return Math.min(Math.trunc(timeoutMs), MAX_SAFE_FETCH_TIMEOUT_MS);
+}
+
 /**
  * Create a custom fetch function with logging, retry, and timeout support.
  */
@@ -431,12 +603,34 @@ export function createCustomFetch(
 ): typeof fetch {
   const {
     connectionTimeoutMs,
+    responseTimeoutMs,
     logger,
     urlTransformer,
     retryConfig,
     type,
     abortSignal,
   } = options;
+  const normalizedConnectionTimeoutMs =
+    normalizeFetchTimeoutMs(connectionTimeoutMs);
+  const normalizedResponseTimeoutMs =
+    normalizeFetchTimeoutMs(responseTimeoutMs);
+  let sharedDispatcher: Dispatcher | undefined;
+
+  const getSharedDispatcher = (): Dispatcher | undefined => {
+    if (normalizedResponseTimeoutMs === undefined) {
+      return undefined;
+    }
+
+    sharedDispatcher ??= new Agent({
+      ...(normalizedConnectionTimeoutMs !== undefined
+        ? { connectTimeout: normalizedConnectionTimeoutMs }
+        : {}),
+      headersTimeout: normalizedResponseTimeoutMs,
+      bodyTimeout: normalizedResponseTimeoutMs,
+    });
+
+    return sharedDispatcher;
+  };
 
   const combineAbortSignals = (
     signals: Array<AbortSignal | null | undefined>,
@@ -504,9 +698,16 @@ export function createCustomFetch(
 
     const combined = combineAbortSignals([init?.signal, abortSignal]);
     try {
-      const response = await fetchWithRetry(url, {
+      const requestInit: RequestInit & { dispatcher?: Dispatcher } = {
         ...init,
         signal: combined.signal,
+      };
+      if (requestInit.dispatcher === undefined) {
+        requestInit.dispatcher = getSharedDispatcher();
+      }
+
+      const response = await fetchWithRetry(url, {
+        ...requestInit,
         logger,
         retryConfig:
           retryConfig ??

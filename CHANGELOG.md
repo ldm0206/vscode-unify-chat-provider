@@ -1,5 +1,93 @@
 # Changelog
 
+## v5.5.0 - 2026-03-11
+
+### Features
+- add model display name template configuration (82294c0, SmallMain)
+
+### Chores
+- update ROADMAP (26ee61a, SmallMain)
+
+## v5.4.0 - 2026-03-11
+
+### Features
+- add service tier field to provider configuration (25db890, SmallMain)
+
+### Fixes
+- add response timeout support to custom fetch implementation (5159445, SmallMain)
+
+## v5.3.0 - 2026-03-10
+
+### Features
+- add transport mode configuration and WebSocket support for OpenAI Responses provider (36b1931, SmallMain)
+
+### Fixes
+- service tier resolution for non-OpenAI/Anthropic providers (8877ca9, SmallMain)
+
+## v5.2.2 - 2026-03-10
+
+### Fixes
+- Antigravity: normalize Claude model ID before appending -thinking suffix (526c467, SmallMain)
+- enhance model handling by adding models array to ModelViewRoute and updating related screens (eed4b64, SmallMain)
+- update section name from 'parameters' to 'capabilities' in model form schema (05e1031, SmallMain)
+
+## v5.2.1 - 2026-03-10
+
+### Fixes
+- add chatgpt.com to supported providers for OpenAIUsePreviousResponseId feature (315bc81, SmallMain)
+- only support previous_response_id continuation for compatible providers (aa782e7, SmallMain)
+
+## v5.2.0 - 2026-03-10
+
+### Features
+- claude relay service balance provider with configurable base URL (f7be2ad, SmallMain)
+
+### Fixes
+- remove deprecated iFlow CLI from README files (61f2910, SmallMain)
+
+### Chores
+- update ModelConfig fields and add service tier notes in README files (7df2123, SmallMain)
+
+## v5.1.0 - 2026-03-09
+
+### Features
+- add previous_response_id handling for OpenAI responses API (638c440, SmallMain)
+- add service tier support (e49f29a, SmallMain)
+
+### Fixes
+- remove deprecated gemini-3.1-pro-preview-customtools model ID (1e4691e, SmallMain)
+- add default instructions field to OpenAICodexProvider request body (1f6eb6d, SmallMain)
+- update CLI clients (44c89dd, SmallMain)
+- update formats (e3f5e2a, SmallMain)
+- update QwenCode client headers and model configs (10ec83a, SmallMain)
+
+### Chores
+- update CLI clients and tools in agent configuration (fb6460b, SmallMain)
+- Update CLI clients and synchronize model IDs according to reference projects (8bcc9b3, SmallMain)
+
+## v5.0.0 - 2026-03-08
+
+### Breaking Changes
+- accepts only globally scoped configurations (300a7a8, SmallMain)
+
+### Features
+- add GPT-5.4 model support (98769e5, SmallMain)
+- add Gemini 3.1 Flash Lite Preview model (3ce0c9d, SmallMain)
+- add Qwen 3.5 series tiny models (ad8bf86, SmallMain)
+- refactor to multi-window instance anti-concurrency strategy (7278bdb, SmallMain)
+- add Synthetic.new provider docs and balance checker (7983ac3, Matt Cowger)
+- add Synthetic.new well-known provider and models (afc9364, Matt Cowger)
+
+### Fixes
+- update formatting functions for model selection and enhance balance snapshot normalization (a8ab026, SmallMain)
+- update Synthetic provider translates and documentation (a62db6e, SmallMain)
+- google: merge streaming functionCall chunks to prevent empty name errors (ab8e96d, Matt Cowger)
+
+### Chores
+- update dependencies (070e527, SmallMain)
+- update CLI clients to sync with reference projects (a937c6c, SmallMain)
+- update vscode dts (259605b, SmallMain)
+
 ## v4.9.4 - 2026-02-26
 
 ### Fixes

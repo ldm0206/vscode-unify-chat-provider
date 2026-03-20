@@ -9,7 +9,11 @@ import { createRequestLogger } from './logger';
 import { ModelConfig, PerformanceTrace, ProviderConfig } from './types';
 import { getBaseModelId } from './model-id-utils';
 import { createProvider } from './client/utils';
-import { formatModelTooltip, formatProviderDetail } from './ui/form-utils';
+import {
+  formatProviderBadgeSuffixForModelSelection,
+  formatModelTooltipForModelSelection,
+  formatProviderDetailForModelSelection,
+} from './ui/form-utils';
 import {
   calculateBackoffDelay,
   delay,
@@ -33,6 +37,16 @@ import {
 } from './tokenizer/tokenizers';
 import type { BalanceManager } from './balance';
 import { evaluateBalanceWarning } from './balance/warning-utils';
+
+const MODEL_DISPLAY_NAME_PLACEHOLDER_PATTERN =
+  /\{(modelName|modelFamily|providerName|remainingBalance)\}/g;
+
+interface ModelDisplayNameTemplateValues {
+  modelName: string;
+  modelFamily: string;
+  providerName: string;
+  remainingBalance: string;
+}
 
 export class UnifyChatService implements vscode.LanguageModelChatProvider {
   private readonly clients = new Map<string, ApiProvider>();
@@ -89,11 +103,28 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
     model: ModelConfig,
   ): vscode.LanguageModelChatInformation {
     const modelId = this.createModelId(provider.name, model.id);
+    const resolvedModelName = model.name ?? model.id;
+    const resolvedModelFamily = model.family ?? getBaseModelId(model.id);
     const balanceSnapshot = this.balanceManager?.getProviderState(
       provider.name,
     )?.snapshot;
-    const detail = formatProviderDetail(provider.name, balanceSnapshot);
-    const tooltip = formatModelTooltip(provider, model, balanceSnapshot);
+    const remainingBalance =
+      formatProviderBadgeSuffixForModelSelection(balanceSnapshot);
+    const displayName = this.renderModelDisplayName({
+      modelName: resolvedModelName,
+      modelFamily: resolvedModelFamily,
+      providerName: provider.name,
+      remainingBalance,
+    });
+    const detail = formatProviderDetailForModelSelection(
+      provider.name,
+      balanceSnapshot,
+    );
+    const tooltip = formatModelTooltipForModelSelection(
+      provider,
+      model,
+      balanceSnapshot,
+    );
 
     const warning = evaluateBalanceWarning(
       balanceSnapshot?.items,
@@ -105,8 +136,8 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
 
     return {
       id: modelId,
-      name: model.name ?? model.id,
-      family: model.family ?? getBaseModelId(model.id),
+      name: displayName,
+      family: resolvedModelFamily,
       version: '',
       maxInputTokens: model.maxInputTokens ?? DEFAULT_MAX_INPUT_TOKENS,
       maxOutputTokens: model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
@@ -123,6 +154,36 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
       isUserSelectable: true,
       statusIcon,
     };
+  }
+
+  private renderModelDisplayName(
+    values: ModelDisplayNameTemplateValues,
+  ): string {
+    const rendered = this.configStore.modelDisplayNameTemplate.replace(
+      MODEL_DISPLAY_NAME_PLACEHOLDER_PATTERN,
+      (_match, key: string) =>
+        this.resolveModelDisplayNameTemplateValue(key, values),
+    );
+    const trimmed = rendered.trim();
+    return trimmed || values.modelName;
+  }
+
+  private resolveModelDisplayNameTemplateValue(
+    key: string,
+    values: ModelDisplayNameTemplateValues,
+  ): string {
+    switch (key) {
+      case 'modelName':
+        return values.modelName;
+      case 'modelFamily':
+        return values.modelFamily;
+      case 'providerName':
+        return values.providerName;
+      case 'remainingBalance':
+        return values.remainingBalance;
+      default:
+        return `{${key}}`;
+    }
   }
 
   /**
@@ -458,11 +519,23 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
           }
         }
 
-        // If the stream produced data or was cancelled, we're done
+        // If the stream produced any parts or was cancelled, we're done
         if (partCount > 0 || token.isCancellationRequested) {
           if (token.isCancellationRequested) {
             outcome = 'cancelled';
           }
+          break;
+        }
+
+        // 0-part responses are valid for some providers. In particular,
+        // Anthropic Messages may legitimately return usage-only streams
+        // (e.g. `message_start` + `message_delta` with only usage /
+        // stop_reason + `message_stop`) where the final message has an empty
+        // content array. Copilot Chat interprets a visibly empty assistant
+        // response as an error, so the Anthropic client suppresses all
+        // parts in this scenario. We must treat those 0-part responses as
+        // successful no-op completions and not retry.
+        if (resolvedProvider.type === 'anthropic') {
           break;
         }
 

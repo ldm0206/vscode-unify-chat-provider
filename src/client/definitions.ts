@@ -207,6 +207,15 @@ export enum FeatureId {
    */
   OpenAIStripIncludeParam = 'openai_strip-include-param',
   /**
+   * Use `previous_response_id` continuation requests in the OpenAI Responses API.
+   *
+   * Many OpenAI-compatible providers expose a `/responses` endpoint before they
+   * fully support response chaining, so this remains feature-gated.
+   *
+   * @see https://developers.openai.com/docs/guides/conversation-state
+   */
+  OpenAIUsePreviousResponseId = 'openai_use-previous-response-id',
+  /**
    * Enable VolcEngine / BytePlus context caching on OpenAI Responses API.
    */
   OpenAIUseVolcContextCaching = 'openai_use-volc-context-caching',
@@ -349,7 +358,7 @@ export const FEATURES: Record<FeatureId, Feature> = {
     ],
   },
   [FeatureId.OpenAIOnlyMaxCompletionTokens]: {
-    supportedProviders: ['api.cerebras.ai', 'opencode.ai'],
+    supportedProviders: ['api.cerebras.ai', 'opencode.ai', 'api.synthetic.new'],
     supportedFamilys: [
       'codex-mini-latest',
       'gpt-5.2',
@@ -461,6 +470,7 @@ export const FEATURES: Record<FeatureId, Feature> = {
     supportedProviders: [
       'ark.cn-beijing.volces.com',
       'ark.ap-southeast.bytepluses.com',
+      'api.synthetic.new',
     ],
   },
   [FeatureId.OpenAIStripIncludeParam]: {
@@ -468,6 +478,9 @@ export const FEATURES: Record<FeatureId, Feature> = {
       'ark.cn-beijing.volces.com',
       'ark.ap-southeast.bytepluses.com',
     ],
+  },
+  [FeatureId.OpenAIUsePreviousResponseId]: {
+    supportedProviders: ['api.openai.com', 'chatgpt.com'],
   },
   [FeatureId.OpenAIUseVolcContextCaching]: {
     supportedProviders: [
@@ -480,6 +493,7 @@ export const FEATURES: Record<FeatureId, Feature> = {
       'dashscope.aliyuncs.com',
       'dashscope-intl.aliyuncs.com',
       'api-inference.modelscope.cn',
+      'api.synthetic.new',
     ],
   },
   [FeatureId.OpenAIUseMaxInputTokens]: {
@@ -526,6 +540,7 @@ export const FEATURES: Record<FeatureId, Feature> = {
       'api.siliconflow.cn',
       'api.siliconflow.com',
       'api.longcat.chat',
+      'api.synthetic.new',
     ],
     customCheckers: [
       // Checker for iFlow enable_thinking models:

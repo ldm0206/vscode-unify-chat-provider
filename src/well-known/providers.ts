@@ -96,6 +96,8 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     baseUrl: 'https://api.x.ai',
     authTypes: ['api-key'],
     models: [
+      'grok-4.20-beta-0309-reasoning',
+      'grok-4.20-beta-0309-non-reasoning',
       'grok-4',
       'grok-4-1-fast-reasoning',
       'grok-4-1-fast-non-reasoning',
@@ -118,6 +120,31 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     balanceProvider: { method: 'openrouter' },
     authTypes: ['api-key'],
     models: [],
+  },
+  {
+    name: 'Synthetic',
+    category: 'General',
+    type: 'openai-chat-completion',
+    baseUrl: 'https://api.synthetic.new/openai/v1',
+    balanceProvider: { method: 'synthetic' },
+    authTypes: ['api-key'],
+    models: [
+      'MiniMax-M2.5',
+      'qwen3.5-397b-a17b',
+      'kimi-k2.5',
+      'glm-4.7',
+      'deepseek-r1-0528',
+      'deepseek-v3-0324',
+      'deepseek-v3.2',
+      'llama-3.3-70b',
+      'MiniMax-M2.1',
+      'kimi-k2-0905-preview',
+      'kimi-k2-thinking',
+      'gpt-oss-120b',
+      'deepseek-v3',
+      'qwen3-235b-a22b-thinking-2507',
+      'qwen3-coder-480b-a35b-instruct',
+    ],
   },
   {
     name: 'AIHubMix',
@@ -573,6 +600,7 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     authTypes: ['api-key', 'claude-code'],
     models: [
       'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-opus-4-5',
       'claude-sonnet-4-5',
       'claude-haiku-4-5',
@@ -589,6 +617,14 @@ export const WELL_KNOWN_PROVIDERS: WellKnownProviderConfig[] = [
     },
     models: ['glm-5', 'glm-4.7', 'MiniMax-M2.5', 'MiniMax-M2.1', 'kimi-k2.5'],
     autoFetchOfficialModels: true,
+  },
+  {
+    name: 'Kilo Code',
+    category: 'General',
+    type: 'openai-chat-completion',
+    baseUrl: 'https://api.kilo.ai/api/gateway',
+    authTypes: ['api-key'],
+    models: [],
   },
 ];
 
