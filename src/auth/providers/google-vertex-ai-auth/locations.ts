@@ -11,6 +11,13 @@ export interface GoogleCloudLocation {
  * @see https://cloud.google.com/vertex-ai/docs/general/locations
  */
 export const GOOGLE_CLOUD_LOCATIONS: GoogleCloudLocation[] = [
+  // Global endpoint
+  {
+    id: 'global',
+    label: t('Global'),
+    description: 'global',
+  },
+
   // Americas
   {
     id: 'us-central1',

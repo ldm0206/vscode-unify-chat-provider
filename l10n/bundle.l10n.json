@@ -654,6 +654,7 @@
   "Sign in to GitHub and authorize Copilot": "Sign in to GitHub and authorize Copilot",
   "Token refresh failed (HTTP {0}): {1}": "Token refresh failed (HTTP {0}): {1}",
   "Type a custom region/location": "Type a custom region/location",
+  "Global": "Global",
   "US Central (Iowa)": "US Central (Iowa)",
   "US East (N. Virginia)": "US East (N. Virginia)",
   "US East (South Carolina)": "US East (South Carolina)",

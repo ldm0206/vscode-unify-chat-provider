@@ -97,6 +97,16 @@ export class VertexAIProvider extends GoogleAIStudioProvider {
     return {};
   }
 
+  private resolveVertexBaseUrl(location: string): string {
+    const normalizedLocation = location.trim().toLowerCase();
+
+    if (normalizedLocation === 'global') {
+      return 'https://aiplatform.googleapis.com';
+    }
+
+    return `https://${normalizedLocation}-aiplatform.googleapis.com`;
+  }
+
   /**
    * Detects whether the apiKey is a file path (service account) or an API key.
    *
@@ -187,7 +197,7 @@ export class VertexAIProvider extends GoogleAIStudioProvider {
     if (auth.subType === 'adc') {
       // ADC mode: SDK automatically uses Application Default Credentials
       const adcConfig = auth as GoogleVertexAIAdcConfig;
-      const baseUrl = `https://${adcConfig.location}-aiplatform.googleapis.com`;
+      const baseUrl = this.resolveVertexBaseUrl(adcConfig.location);
 
       const httpOptions: HttpOptions = {
         baseUrl,
@@ -208,7 +218,7 @@ export class VertexAIProvider extends GoogleAIStudioProvider {
     if (auth.subType === 'service-account') {
       // Service Account mode: SDK uses keyFilename for authentication
       const saConfig = auth as GoogleVertexAIServiceAccountConfig;
-      const baseUrl = `https://${saConfig.location}-aiplatform.googleapis.com`;
+      const baseUrl = this.resolveVertexBaseUrl(saConfig.location);
 
       const httpOptions: HttpOptions = {
         baseUrl,

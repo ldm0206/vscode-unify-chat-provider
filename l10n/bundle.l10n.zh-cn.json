@@ -654,6 +654,7 @@
   "Sign in to GitHub and authorize Copilot": "登录 GitHub 并授权 Copilot",
   "Token refresh failed (HTTP {0}): {1}": "Token 刷新失败 (HTTP {0}): {1}",
   "Type a custom region/location": "输入自定义区域/位置",
+  "Global": "全局",
   "US Central (Iowa)": "US Central (Iowa)",
   "US East (N. Virginia)": "US East (N. Virginia)",
   "US East (South Carolina)": "US East (South Carolina)",

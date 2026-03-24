@@ -90,7 +90,7 @@ export async function selectLocation(
 
   if (selection.isCustom) {
     // Show input for custom location
-    return await showInput({
+    const customLocation = await showInput({
       title: t('Custom Location'),
       prompt: t('Enter the Google Cloud location/region'),
       value: currentValue ?? '',
@@ -109,6 +109,9 @@ export async function selectLocation(
         return true;
       },
     });
+
+    const trimmed = customLocation?.trim();
+    return trimmed ? trimmed : undefined;
   }
 
   return selection.locationId;
