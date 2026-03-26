@@ -994,6 +994,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
+    "update-dts": "npx vscode-dts dev",
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
     "l10n:check": "bun run scripts/l10n-audit.ts",
