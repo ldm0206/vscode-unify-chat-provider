@@ -92,6 +92,12 @@ function readExtensionVersion(packageJson: unknown): string | undefined {
     : undefined;
 }
 
+function shouldBypassMainInstanceCoordination(
+  context: vscode.ExtensionContext,
+): boolean {
+  return context.extensionMode === vscode.ExtensionMode.Development;
+}
+
 class SocketLineReader implements vscode.Disposable {
   private buffer = '';
   private onMessage: (message: IpcMessage) => void;
@@ -293,6 +299,20 @@ export class MainInstanceCoordinator implements vscode.Disposable {
       context.globalStorageUri.fsPath,
     );
     this.socketPath = descriptor.path;
+
+    if (shouldBypassMainInstanceCoordination(context)) {
+      this.stopReconnectLoop();
+      this.disposeLeaderConnection();
+      this.disposeLeaderServer();
+      this.authToken = undefined;
+      this.clearCompatibilityError();
+      this.updateRole('leader', this.clientId, { forceEmit: true });
+      authLog.verbose(
+        'main-instance',
+        'Development extension host detected; bypassing main-instance coordination',
+      );
+      return;
+    }
 
     await this.elect(descriptor);
   }
