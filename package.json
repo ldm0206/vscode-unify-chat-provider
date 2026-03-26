@@ -584,6 +584,13 @@
                   "%configuration.endpoints.serviceTier.enumDescriptions.2%",
                   "%configuration.endpoints.serviceTier.enumDescriptions.3%",
                   "%configuration.endpoints.serviceTier.enumDescriptions.4%"
+                ],
+                "enumItemLabels": [
+                  "%configuration.serviceTier.enumItemLabels.0%",
+                  "%configuration.serviceTier.enumItemLabels.1%",
+                  "%configuration.serviceTier.enumItemLabels.2%",
+                  "%configuration.serviceTier.enumItemLabels.3%",
+                  "%configuration.serviceTier.enumItemLabels.4%"
                 ]
               },
               "extraHeaders": {
@@ -792,6 +799,13 @@
                             "%configuration.endpoints.models.serviceTier.enumDescriptions.2%",
                             "%configuration.endpoints.models.serviceTier.enumDescriptions.3%",
                             "%configuration.endpoints.models.serviceTier.enumDescriptions.4%"
+                          ],
+                          "enumItemLabels": [
+                            "%configuration.serviceTier.enumItemLabels.0%",
+                            "%configuration.serviceTier.enumItemLabels.1%",
+                            "%configuration.serviceTier.enumItemLabels.2%",
+                            "%configuration.serviceTier.enumItemLabels.3%",
+                            "%configuration.serviceTier.enumItemLabels.4%"
                           ]
                         },
                         "thinking": {
@@ -1100,6 +1114,13 @@
                                             "%configuration.endpoints.models.serviceTier.enumDescriptions.2%",
                                             "%configuration.endpoints.models.serviceTier.enumDescriptions.3%",
                                             "%configuration.endpoints.models.serviceTier.enumDescriptions.4%"
+                                          ],
+                                          "enumItemLabels": [
+                                            "%configuration.serviceTier.enumItemLabels.0%",
+                                            "%configuration.serviceTier.enumItemLabels.1%",
+                                            "%configuration.serviceTier.enumItemLabels.2%",
+                                            "%configuration.serviceTier.enumItemLabels.3%",
+                                            "%configuration.serviceTier.enumItemLabels.4%"
                                           ]
                                         },
                                         "thinking": {
