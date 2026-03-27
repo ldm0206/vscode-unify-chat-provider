@@ -9,6 +9,7 @@ import { normalizeBaseUrlInput } from './utils';
 import { PROVIDER_KEYS, ProviderType } from './client/definitions';
 import { getRenamedProviderType } from './secret/migration';
 import { normalizePresetTemplates } from './preset-templates';
+import { normalizeConfiguredModelCapabilities } from './model-capabilities';
 import {
   ContextCacheConfig,
   ModelConfig,
@@ -476,6 +477,9 @@ export class ConfigStore {
           withoutKeys(MODEL_CONFIG_KEYS, ['id'] as const),
         );
 
+        model.capabilities = normalizeConfiguredModelCapabilities(
+          model.capabilities,
+        );
         model.serviceTier = this.normalizeServiceTier(model.serviceTier);
         model.extraHeaders = this.normalizeStringRecord(model.extraHeaders);
         model.extraBody = this.normalizeObjectRecord(model.extraBody);

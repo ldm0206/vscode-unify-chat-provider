@@ -5,6 +5,9 @@ import type { FieldContext, FormSchema } from './field-schema';
 import { booleanOptions, formatBoolean } from './field-editors';
 import { pickQuickItem, showInput } from './component';
 import {
+  formatModelEditToolsDisplay,
+  getModelEditToolDescription,
+  getModelEditToolLabel,
   validateModelIdUnique,
   validatePositiveIntegerOrEmpty,
 } from './form-utils';
@@ -14,13 +17,14 @@ import {
   MODEL_VERSION_DELIMITER,
 } from '../model-id-utils';
 import type { ProviderType } from '../client/definitions';
-import type { ModelConfig } from '../types';
+import type { ModelConfig, ModelEditTool } from '../types';
 import {
   DEFAULT_TOKEN_COUNT_MULTIPLIER,
   TOKENIZERS,
   resolveTokenCountMultiplier,
   resolveTokenizerId,
 } from '../tokenizer/tokenizers';
+import { MODEL_EDIT_TOOLS } from '../model-capabilities';
 
 /**
  * Context for model form fields.
@@ -29,6 +33,36 @@ export interface ModelFieldContext extends FieldContext {
   models: ModelConfig[];
   originalId?: string;
   providerType?: ProviderType;
+}
+
+type EditToolQuickPickItem = vscode.QuickPickItem & {
+  editTool: ModelEditTool | undefined;
+};
+
+async function pickModelEditTool(
+  currentEditTool: ModelEditTool | undefined,
+): Promise<EditToolQuickPickItem | undefined> {
+  const orderedEditTools = [
+    ...(currentEditTool ? [currentEditTool] : []),
+    ...MODEL_EDIT_TOOLS.filter((editTool) => editTool !== currentEditTool),
+  ];
+
+  return pickQuickItem<EditToolQuickPickItem>({
+    title: t('Edit Tools'),
+    placeholder: t('Select edit tool preference'),
+    items: [
+      {
+        label: t('Default'),
+        description: t('VS Code decides which tools to use'),
+        editTool: undefined,
+      },
+      ...orderedEditTools.map((editTool) => ({
+        label: getModelEditToolLabel(editTool),
+        description: getModelEditToolDescription(editTool),
+        editTool,
+      })),
+    ],
+  });
 }
 
 /**
@@ -323,6 +357,28 @@ export const modelFormSchema: FormSchema<ModelConfig> = {
       },
       getDescription: (draft) =>
         draft.capabilities?.imageInput ? t('Enabled') : t('Disabled'),
+    },
+    {
+      key: 'capabilities',
+      type: 'custom',
+      label: t('Edit Tools'),
+      icon: 'edit',
+      section: 'capabilities',
+      edit: async (draft) => {
+        const picked = await pickModelEditTool(draft.capabilities?.editTools);
+        if (!picked) {
+          return;
+        }
+
+        draft.capabilities = {
+          ...draft.capabilities,
+          editTools: picked.editTool,
+        };
+      },
+      getDescription: (draft) =>
+        formatModelEditToolsDisplay(draft.capabilities?.editTools, {
+          showDefaultWhenUnset: true,
+        }),
     },
     // Stream
     {

@@ -20,6 +20,11 @@ export type ThinkingEffort =
   | 'medium'
   | 'high'
   | 'xhigh';
+export type ModelEditTool =
+  | 'find-replace'
+  | 'multi-find-replace'
+  | 'apply-patch'
+  | 'code-rewrite';
 
 /**
  * Configuration for a single provider endpoint
@@ -223,6 +228,8 @@ export interface ModelCapabilities {
   toolCalling?: boolean | number;
   /** Whether the model supports image input */
   imageInput?: boolean;
+  /** Preferred edit tools hint for VS Code / Copilot Chat. */
+  editTools?: ModelEditTool;
 }
 
 /**

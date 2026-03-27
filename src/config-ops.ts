@@ -8,6 +8,7 @@ import {
   resolveTokenizerId,
 } from './tokenizer/tokenizers';
 import { normalizePresetTemplates } from './preset-templates';
+import { normalizeComparableModelCapabilities } from './model-capabilities';
 
 export const MODEL_CONFIG_KEYS = [
   'id',
@@ -160,12 +161,7 @@ export function toComparableModelConfig(model: ModelConfig): ModelConfig {
     cloned.tokenCountMultiplier,
   );
 
-  const capabilities = cloned.capabilities ?? {};
-  cloned.capabilities = {
-    ...capabilities,
-    toolCalling: capabilities.toolCalling ?? false,
-    imageInput: capabilities.imageInput ?? false,
-  };
+  cloned.capabilities = normalizeComparableModelCapabilities(cloned.capabilities);
   cloned.presetTemplates = normalizePresetTemplates(cloned.presetTemplates);
 
   return cloned;

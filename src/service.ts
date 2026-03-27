@@ -41,6 +41,7 @@ import {
 } from './tokenizer/tokenizers';
 import type { BalanceManager } from './balance';
 import { evaluateBalanceWarning } from './balance/warning-utils';
+import { resolveConfiguredEditToolsForVsCode } from './model-capabilities';
 
 const MODEL_DISPLAY_NAME_PLACEHOLDER_PATTERN =
   /\{(modelName|modelFamily|providerName|remainingBalance)\}/g;
@@ -137,6 +138,20 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
     const statusIcon = warning.isNearThreshold
       ? new vscode.ThemeIcon('warning')
       : undefined;
+    const editTools = resolveConfiguredEditToolsForVsCode(
+      model.capabilities?.editTools,
+    );
+    const capabilities: vscode.LanguageModelChatInformation['capabilities'] =
+      editTools === undefined
+        ? {
+            toolCalling: model.capabilities?.toolCalling ?? false,
+            imageInput: model.capabilities?.imageInput ?? false,
+          }
+        : {
+            toolCalling: model.capabilities?.toolCalling ?? false,
+            imageInput: model.capabilities?.imageInput ?? false,
+            editTools,
+          };
 
     return {
       id: modelId,
@@ -145,10 +160,7 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
       version: '',
       maxInputTokens: model.maxInputTokens ?? DEFAULT_MAX_INPUT_TOKENS,
       maxOutputTokens: model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-      capabilities: {
-        toolCalling: model.capabilities?.toolCalling ?? false,
-        imageInput: model.capabilities?.imageInput ?? false,
-      },
+      capabilities,
       category: {
         label: provider.name,
         order: 2,

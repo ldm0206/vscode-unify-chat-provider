@@ -738,6 +738,22 @@
                             "imageInput": {
                               "type": "boolean",
                               "description": "%configuration.endpoints.models.capabilities.imageInput.description%"
+                            },
+                            "editTools": {
+                              "type": "string",
+                              "description": "%configuration.endpoints.models.capabilities.editTools.description%",
+                              "enum": [
+                                "find-replace",
+                                "multi-find-replace",
+                                "apply-patch",
+                                "code-rewrite"
+                              ],
+                              "enumDescriptions": [
+                                "%configuration.endpoints.models.capabilities.editTools.enumDescriptions.0%",
+                                "%configuration.endpoints.models.capabilities.editTools.enumDescriptions.1%",
+                                "%configuration.endpoints.models.capabilities.editTools.enumDescriptions.2%",
+                                "%configuration.endpoints.models.capabilities.editTools.enumDescriptions.3%"
+                              ]
                             }
                           }
                         },

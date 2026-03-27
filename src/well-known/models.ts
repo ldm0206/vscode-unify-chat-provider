@@ -7,6 +7,7 @@ import {
   reasoningEffort,
   thinkingMode,
 } from './preset-templates';
+import { mergeModelCapabilities } from '../model-capabilities';
 
 const DOUBAO_REASONING_EFFORTS = ['high', 'medium', 'low', 'minimal'] as const;
 const OPENAI_FULL_REASONING_EFFORTS = [
@@ -124,6 +125,34 @@ function geminiBudgetReasoningEffort(
     budgets,
     default: options?.defaultEffort ?? 'auto',
   });
+}
+
+function mergeModelConfig(
+  base: Partial<ModelConfig>,
+  override: Partial<ModelConfig>,
+): ModelConfig {
+  const mergedCapabilities = mergeModelCapabilities(
+    base.capabilities,
+    override.capabilities,
+  );
+  const mergedId = override.id ?? base.id;
+  if (!mergedId) {
+    throw new Error('Model config merge requires an id.');
+  }
+
+  const merged: ModelConfig = {
+    id: mergedId,
+    ...base,
+    ...override,
+  };
+
+  if (mergedCapabilities !== undefined) {
+    merged.capabilities = mergedCapabilities;
+  } else {
+    delete merged.capabilities;
+  }
+
+  return merged;
 }
 
 /**
@@ -414,6 +443,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [
       anthropicAdaptiveReasoningEffort(
@@ -445,6 +475,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [
       anthropicAdaptiveReasoningEffort(
@@ -467,6 +498,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [anthropicBudgetReasoningEffort('high')],
   },
@@ -484,6 +516,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
@@ -501,6 +534,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [anthropicBudgetReasoningEffort('low')],
   },
@@ -518,6 +552,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
@@ -534,6 +569,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
@@ -567,6 +603,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'multi-find-replace',
     },
     presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
@@ -630,6 +667,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'xhigh'),
@@ -649,6 +687,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'none'),
@@ -668,6 +707,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'none'),
@@ -687,6 +727,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_CODEX_REASONING_EFFORTS, 'xhigh'),
@@ -714,6 +755,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_CODEX_REASONING_EFFORTS, 'xhigh'),
@@ -733,6 +775,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_CODEX_REASONING_EFFORTS, 'xhigh'),
@@ -752,6 +795,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'xhigh'),
@@ -771,6 +815,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_PRO_REASONING_EFFORTS, 'xhigh'),
@@ -786,6 +831,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
   },
   {
@@ -802,6 +848,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_STANDARD_REASONING_EFFORTS, 'high'),
@@ -821,6 +868,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
@@ -840,6 +888,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'medium'),
@@ -859,6 +908,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'medium'),
@@ -878,6 +928,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
@@ -897,6 +948,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'xhigh'),
@@ -916,6 +968,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
@@ -935,6 +988,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
@@ -954,6 +1008,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: true,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_HIGH_ONLY_REASONING_EFFORTS, 'high'),
@@ -1074,6 +1129,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: false,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_OSS_REASONING_EFFORTS, 'high'),
@@ -1104,6 +1160,7 @@ const _WELL_KNOWN_MODELS = [
     capabilities: {
       toolCalling: true,
       imageInput: false,
+      editTools: 'apply-patch',
     },
     presetTemplates: [
       openAiReasoningEffort(OPENAI_OSS_REASONING_EFFORTS, 'high'),
@@ -4479,10 +4536,12 @@ export function mergeWithWellKnownModel(
 ): ModelConfig {
   const wellKnown = findBestMatchingWellKnownModel(apiModel.id);
 
-  const defaultCapabilities = { capabilities: { toolCalling: true } };
+  const defaultConfig: Partial<ModelConfig> = {
+    capabilities: { toolCalling: true },
+  };
 
   if (!wellKnown) {
-    return Object.assign(defaultCapabilities, apiModel);
+    return mergeModelConfig(defaultConfig, apiModel);
   }
 
   const { overrides: _overrides, ...wellKnownBase } = wellKnown;
@@ -4492,11 +4551,14 @@ export function mergeWithWellKnownModel(
     const providerOverrides = getProviderOverrides(wellKnown);
     const matchedOverride = findMatchingOverride(providerOverrides, provider);
     if (matchedOverride) {
-      baseConfig = { ...baseConfig, ...matchedOverride.config };
+      baseConfig = mergeModelConfig(baseConfig, matchedOverride.config);
     }
   }
 
-  return Object.assign(defaultCapabilities, baseConfig, apiModel);
+  return mergeModelConfig(
+    mergeModelConfig(defaultConfig, baseConfig),
+    apiModel,
+  );
 }
 
 /**
@@ -4524,7 +4586,7 @@ export function normalizeWellKnownConfigs(
       const matchedOverride = findMatchingOverride(providerOverrides, provider);
 
       if (matchedOverride) {
-        finalConfig = { ...finalConfig, ...matchedOverride.config };
+        finalConfig = mergeModelConfig(finalConfig, matchedOverride.config);
         if (matchedOverride.config.id) {
           finalId = matchedOverride.config.id;
         }

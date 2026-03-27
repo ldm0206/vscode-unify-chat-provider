@@ -11,6 +11,9 @@ import {
   stableStringify,
   toComparableModelConfig,
 } from '../config-ops';
+import {
+  normalizeConfiguredModelCapabilities,
+} from '../model-capabilities';
 import { normalizeBaseUrlInput } from '../utils';
 import { showValidationErrors } from './component';
 import type { BalanceMetric, BalanceSnapshot } from '../balance/types';
@@ -23,6 +26,7 @@ import {
 import {
   ProviderConfig,
   ModelConfig,
+  type ModelEditTool,
   type DeprecatedProviderConfigKey,
 } from '../types';
 
@@ -77,9 +81,12 @@ export function cloneModels(models: ModelConfig[]): ModelConfig[] {
  */
 export function createModelDraft(existing?: ModelConfig): ModelConfig {
   if (!existing) {
-    return { id: '', capabilities: { toolCalling: true } };
+    return {
+      id: '',
+      capabilities: { toolCalling: true },
+    };
   }
-  return { ...existing };
+  return deepClone(existing);
 }
 
 /**
@@ -114,7 +121,51 @@ export function normalizeModelDraft(draft: ModelConfig): ModelConfig {
   normalized.id = normalized.id.trim();
   normalized.name = normalized.name?.trim() || undefined;
   normalized.family = normalized.family?.trim() || undefined;
+  normalized.capabilities = normalizeConfiguredModelCapabilities(
+    normalized.capabilities,
+  );
   return normalized;
+}
+
+export function getModelEditToolLabel(editTool: ModelEditTool): string {
+  switch (editTool) {
+    case 'find-replace':
+      return t('Find & Replace');
+    case 'multi-find-replace':
+      return t('Multi Find & Replace');
+    case 'apply-patch':
+      return t('Apply Patch');
+    case 'code-rewrite':
+      return t('Code Rewrite');
+  }
+}
+
+export function getModelEditToolDescription(
+  editTool: ModelEditTool,
+): string | undefined {
+  switch (editTool) {
+    case 'find-replace':
+      return t('Find and replace text in a document');
+    case 'multi-find-replace':
+      return t('Find and replace multiple text snippets across documents');
+    case 'apply-patch':
+      return t('Use a diff-style patch format for file edits');
+    case 'code-rewrite':
+      return t('Rewrite code snippets directly (general but slower)');
+  }
+}
+
+export function formatModelEditToolsDisplay(
+  editTools: ModelEditTool | undefined,
+  options?: {
+    showDefaultWhenUnset?: boolean;
+  },
+): string {
+  if (editTools === undefined) {
+    return options?.showDefaultWhenUnset ? t('Default') : t('None');
+  }
+
+  return getModelEditToolLabel(editTools);
 }
 
 /**
@@ -256,6 +307,14 @@ export function formatModelDetail(model: ModelConfig): string | undefined {
   if (model.capabilities?.imageInput) {
     parts.push(t('Image'));
   }
+  parts.push(
+    t(
+      'Edit: {0}',
+      formatModelEditToolsDisplay(model.capabilities?.editTools, {
+        showDefaultWhenUnset: true,
+      }),
+    ),
+  );
   return parts.length > 0 ? parts.join(' | ') : undefined;
 }
 
@@ -376,6 +435,15 @@ function formatCapabilities(model: ModelConfig): string {
   if (model.capabilities?.imageInput) {
     capabilities.push(t('Image'));
   }
+
+  capabilities.push(
+    t(
+      'Edit: {0}',
+      formatModelEditToolsDisplay(model.capabilities?.editTools, {
+        showDefaultWhenUnset: true,
+      }),
+    ),
+  );
 
   return capabilities.length > 0 ? capabilities.join('、') : t('None');
 }
