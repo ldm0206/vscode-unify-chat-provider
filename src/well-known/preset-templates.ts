@@ -7,6 +7,7 @@ import type {
 } from '../types';
 
 type Verbosity = NonNullable<ModelConfig['verbosity']>;
+type BudgetReasoningEffort = Extract<ThinkingEffort, 'high' | 'medium' | 'low'>;
 
 const DEFAULT_PRESET_ID = 'default';
 
@@ -94,9 +95,33 @@ const SERVICE_TIER_PRESET_METADATA = {
   },
 } satisfies Record<ServiceTier, { name: string; description: string }>;
 
+const BUDGET_REASONING_EFFORT_ORDER: readonly BudgetReasoningEffort[] = [
+  'high',
+  'medium',
+  'low',
+];
+
+const DEFAULT_REASONING_BUDGETS = {
+  high: 32000,
+  medium: 16000,
+  low: 1024,
+} satisfies Record<BudgetReasoningEffort, number>;
+
 export interface ReasoningEffortTemplateOptions {
-  default?: ThinkingEffort;
+  default?: ThinkingEffort | 'auto';
+  includeAuto?: boolean;
   supported?: readonly ThinkingEffort[];
+}
+
+export interface BudgetReasoningEffortTemplateOptions {
+  default?:
+    | BudgetReasoningEffort
+    | 'auto'
+    | 'none';
+  includeAuto?: boolean;
+  includeNone?: boolean;
+  budgets?: Partial<Record<BudgetReasoningEffort, number>>;
+  supported?: readonly BudgetReasoningEffort[];
 }
 
 interface SupportedTemplateOptions<T> {
@@ -106,6 +131,10 @@ interface SupportedTemplateOptions<T> {
 export type VerbosityTemplateOptions = SupportedTemplateOptions<Verbosity>;
 
 export type ServiceTierTemplateOptions = SupportedTemplateOptions<ServiceTier>;
+
+export interface ThinkingModeTemplateOptions {
+  default?: 'enabled' | 'disabled';
+}
 
 function isReasoningEffortTemplateOptions(
   input: readonly ThinkingEffort[] | ReasoningEffortTemplateOptions | undefined,
@@ -163,6 +192,66 @@ function createDefaultPreset(
   };
 }
 
+function createAutoReasoningEffortPreset(): PresetTemplate['presets'][number] {
+  return {
+    id: 'auto',
+    name: t('Auto'),
+    description: t('Let the provider choose automatically'),
+    config: {
+      thinking: {
+        type: 'auto',
+      },
+    },
+  };
+}
+
+function createReasoningEffortPreset(
+  effort: ThinkingEffort,
+  thinking: NonNullable<ModelConfig['thinking']>,
+): PresetTemplate['presets'][number] {
+  return {
+    ...REASONING_EFFORT_PRESET_METADATA[effort],
+    id: effort,
+    config: {
+      thinking,
+    },
+  };
+}
+
+export function thinkingMode(
+  opts?: ThinkingModeTemplateOptions,
+): PresetTemplate {
+  const presets: PresetTemplate['presets'] = [
+    {
+      id: 'enabled',
+      name: t('Enabled'),
+      description: t('Enable thinking'),
+      config: {
+        thinking: {
+          type: 'enabled',
+        },
+      },
+    },
+    {
+      id: 'disabled',
+      name: t('Disabled'),
+      description: t('Disable thinking'),
+      config: {
+        thinking: {
+          type: 'disabled',
+        },
+      },
+    },
+  ];
+
+  return {
+    name: t('Thinking'),
+    id: 'thinkingMode',
+    presets,
+    default: opts?.default ?? 'enabled',
+  };
+}
+
 export function reasoningEffort(
   supported?: readonly ThinkingEffort[],
 ): PresetTemplate;
@@ -177,23 +266,107 @@ export function reasoningEffort(
     REASONING_EFFORT_ORDER,
     resolvedOptions?.supported,
   );
-  const presets = supportedEfforts.map(
-    (effort): PresetTemplate['presets'][number] => ({
+  const presets: PresetTemplate['presets'] = [
+    ...(resolvedOptions?.includeAuto ? [createAutoReasoningEffortPreset()] : []),
+    ...supportedEfforts.map(
+      (effort): PresetTemplate['presets'][number] =>
+        createReasoningEffortPreset(effort, {
+          type: 'enabled',
+          effort,
+        }),
+    ),
+  ];
+  const defaultPreset =
+    resolvedOptions?.default === 'auto' && resolvedOptions.includeAuto
+      ? 'auto'
+      : resolvedOptions?.default &&
+          resolvedOptions.default !== 'auto' &&
+          supportedEfforts.includes(resolvedOptions.default)
+      ? resolvedOptions.default
+      : (presets[0]?.id ?? 'xhigh');
+
+  return {
+    name: t('Reasoning Effort'),
+    id: 'reasoningEffort',
+    presets,
+    default: defaultPreset,
+  };
+}
+
+export function adaptiveReasoningEffort(
+  supported?: readonly ThinkingEffort[],
+): PresetTemplate;
+export function adaptiveReasoningEffort(
+  opts?: ReasoningEffortTemplateOptions,
+): PresetTemplate;
+export function adaptiveReasoningEffort(
+  input?: readonly ThinkingEffort[] | ReasoningEffortTemplateOptions,
+): PresetTemplate {
+  const resolvedOptions = normalizeReasoningEffortTemplateOptions(input);
+  const supportedEfforts = resolveSupportedValues(
+    REASONING_EFFORT_ORDER,
+    resolvedOptions?.supported,
+  );
+  const presets: PresetTemplate['presets'] = supportedEfforts.map(
+    (effort): PresetTemplate['presets'][number] =>
+      createReasoningEffortPreset(effort, {
+        type: 'auto',
+        effort,
+      }),
+  );
+  const defaultPreset =
+    resolvedOptions?.default &&
+    resolvedOptions.default !== 'auto' &&
+    supportedEfforts.includes(resolvedOptions.default)
+      ? resolvedOptions.default
+      : (presets[0]?.id ?? 'high');
+
+  return {
+    name: t('Reasoning Effort'),
+    id: 'reasoningEffort',
+    presets,
+    default: defaultPreset,
+  };
+}
+
+export function budgetReasoningEffort(
+  opts?: BudgetReasoningEffortTemplateOptions,
+): PresetTemplate {
+  const budgets: Record<BudgetReasoningEffort, number> = {
+    ...DEFAULT_REASONING_BUDGETS,
+    ...opts?.budgets,
+  };
+  const supportedEfforts = resolveSupportedValues(
+    BUDGET_REASONING_EFFORT_ORDER,
+    opts?.supported,
+  );
+  const presets: PresetTemplate['presets'] = [
+    ...(opts?.includeAuto ? [createAutoReasoningEffortPreset()] : []),
+    ...(opts?.includeNone
+      ? [createReasoningEffortPreset('none', { type: 'disabled' })]
+      : []),
+    ...supportedEfforts.map((effort): PresetTemplate['presets'][number] => ({
       ...REASONING_EFFORT_PRESET_METADATA[effort],
       id: effort,
       config: {
         thinking: {
           type: 'enabled',
-          effort,
+          budgetTokens: budgets[effort],
         },
       },
-    }),
-  );
+    })),
+  ];
   const defaultPreset =
-    resolvedOptions?.default &&
-    supportedEfforts.includes(resolvedOptions.default)
-      ? resolvedOptions.default
-      : (presets[0]?.id ?? 'xhigh');
+    opts?.default === 'auto' && opts.includeAuto
+      ? 'auto'
+      : opts?.default === 'none' && opts.includeNone
+      ? 'none'
+      : opts?.default !== undefined &&
+          opts.default !== 'auto' &&
+          opts.default !== 'none' &&
+          supportedEfforts.includes(opts.default)
+      ? opts.default
+      : (presets[0]?.id ?? 'high');
 
   return {
     name: t('Reasoning Effort'),

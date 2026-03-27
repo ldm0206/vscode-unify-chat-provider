@@ -520,7 +520,60 @@ VS Code 的 Copilot Chat 本身就支持登录 GitHub Copilot 账号，所以一
 
 ### 预设模板说明
 
-TODO
+你可以为单个模型配置多个预设模板，每个模板对应一组枚举选项，显示在 VS Code 模型选择的二级菜单中。
+
+<div align="center">
+<img src="assets/screenshot-24.png" width="600" />
+</div>
+
+你可以自定义预设模板来快速切换模型参数，比如：
+
+```json
+{
+  "presetTemplates": [
+    {
+      "name": "推理强度",
+      "id": "reasoningEffort",
+      "presets": [
+        {
+          "name": "高",
+          "description": "适用于涉及规划、编码、综合分析或更高难度推理的任务。",
+          "id": "high",
+          "config": {
+            "thinking": {
+              "type": "enabled",
+              "effort": "high"
+            },
+            "temperature": 0.7
+          }
+        },
+        {
+          "name": "低",
+          "description": "少量额外思考可在几乎不增加延迟的情况下提升可靠性。",
+          "id": "low",
+          "config": {
+            "thinking": {
+              "type": "enabled",
+              "effort": "low"
+            },
+            "temperature": 0.4
+          }
+        },
+        {
+          "name": "默认",
+          "description": "使用模型当前配置。",
+          "id": "default",
+          "config": {}
+        }
+      ],
+      "default": "default"
+    }
+  ]
+}
+```
+
+- `config` 会覆盖模型配置中的字段，例如上述模板的 `high` 和 `low` 会覆盖 `thinking` 和 `temperature` 字段，而 `default` 则不会覆盖任何字段，使用模型当前配置。
+- 如果存在多个模板，且它们覆盖了同一个字段，则会按照模板声明的顺序依次应用，后面的模板会覆盖前面模板的同名字段。
 
 </details>
 

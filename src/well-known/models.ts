@@ -1,7 +1,130 @@
-import type { ModelConfig, ProviderConfig } from '../types';
+import type { ModelConfig, ProviderConfig, ThinkingEffort } from '../types';
 import type { ProviderPattern } from '../client/types';
 import { matchProvider } from '../client/utils';
-import { reasoningEffort } from './preset-templates';
+import {
+  adaptiveReasoningEffort,
+  budgetReasoningEffort,
+  reasoningEffort,
+  thinkingMode,
+} from './preset-templates';
+
+const DOUBAO_REASONING_EFFORTS = ['high', 'medium', 'low', 'minimal'] as const;
+const OPENAI_FULL_REASONING_EFFORTS = [
+  'xhigh',
+  'high',
+  'medium',
+  'low',
+  'none',
+] as const;
+const OPENAI_STANDARD_REASONING_EFFORTS = [
+  'high',
+  'medium',
+  'low',
+  'none',
+] as const;
+const OPENAI_GPT_5_REASONING_EFFORTS = [
+  'high',
+  'medium',
+  'low',
+  'minimal',
+] as const;
+const OPENAI_PRO_REASONING_EFFORTS = ['xhigh', 'high', 'medium'] as const;
+const OPENAI_HIGH_ONLY_REASONING_EFFORTS = ['high'] as const;
+const OPENAI_CODEX_REASONING_EFFORTS = [
+  'xhigh',
+  'high',
+  'medium',
+  'low',
+] as const;
+const OPENAI_OSS_REASONING_EFFORTS = ['high', 'medium', 'low'] as const;
+const ANTHROPIC_OPUS_4_6_REASONING_EFFORTS = [
+  'xhigh',
+  'high',
+  'medium',
+  'low',
+] as const;
+const ANTHROPIC_STANDARD_REASONING_EFFORTS = ['high', 'medium', 'low'] as const;
+const GEMINI_3_1_PRO_REASONING_EFFORTS = ['high', 'medium', 'low'] as const;
+const GEMINI_3_PRO_REASONING_EFFORTS = ['high', 'low'] as const;
+const GEMINI_3_FLASH_REASONING_EFFORTS = [
+  'high',
+  'medium',
+  'low',
+  'minimal',
+] as const;
+const GEMINI_2_5_PRO_REASONING_BUDGETS = {
+  high: 32768,
+  medium: 8192,
+  low: 1024,
+} as const;
+const GEMINI_2_5_FLASH_REASONING_BUDGETS = {
+  high: 24576,
+  medium: 8192,
+  low: 1024,
+} as const;
+
+function doubaoReasoningEffort(
+  defaultEffort: (typeof DOUBAO_REASONING_EFFORTS)[number] | 'auto',
+) {
+  return reasoningEffort({
+    includeAuto: defaultEffort === 'auto',
+    supported: DOUBAO_REASONING_EFFORTS,
+    default: defaultEffort,
+  });
+}
+
+function openAiReasoningEffort<T extends readonly ThinkingEffort[]>(
+  supported: T,
+  defaultEffort: T[number],
+) {
+  return reasoningEffort({
+    supported,
+    default: defaultEffort,
+  });
+}
+
+function anthropicAdaptiveReasoningEffort<T extends readonly ThinkingEffort[]>(
+  supported: T,
+  defaultEffort: T[number],
+) {
+  return adaptiveReasoningEffort({
+    supported,
+    default: defaultEffort,
+  });
+}
+
+function anthropicBudgetReasoningEffort(
+  defaultEffort: 'high' | 'medium' | 'low',
+) {
+  return budgetReasoningEffort({
+    default: defaultEffort,
+  });
+}
+
+function geminiReasoningEffort<T extends readonly ThinkingEffort[]>(
+  supported: T,
+  defaultEffort: T[number],
+) {
+  return reasoningEffort({
+    supported,
+    default: defaultEffort,
+  });
+}
+
+function geminiBudgetReasoningEffort(
+  budgets: Readonly<Record<'high' | 'medium' | 'low', number>>,
+  options?: {
+    includeNone?: boolean;
+    defaultEffort?: 'auto' | 'none' | 'high' | 'medium' | 'low';
+  },
+) {
+  return budgetReasoningEffort({
+    includeAuto: true,
+    includeNone: options?.includeNone,
+    budgets,
+    default: options?.defaultEffort ?? 'auto',
+  });
+}
 
 /**
  * Well-known models configuration
@@ -22,6 +145,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('high')],
   },
   {
     id: 'doubao-seed-2-0-lite-260215',
@@ -38,6 +162,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('high')],
   },
   {
     id: 'doubao-seed-2-0-mini-260215',
@@ -54,6 +179,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('high')],
   },
   {
     id: 'doubao-seed-2-0-code-preview-260215',
@@ -70,6 +196,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('high')],
   },
   {
     id: 'doubao-seed-1-8-251228',
@@ -86,6 +213,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('high')],
   },
   {
     id: 'doubao-seed-code-preview-251028',
@@ -105,6 +233,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('medium')],
   },
   {
     id: 'doubao-seed-1-6-lite-251015',
@@ -114,12 +243,13 @@ const _WELL_KNOWN_MODELS = [
     maxOutputTokens: 32000,
     stream: true,
     thinking: {
-      type: 'auto',
+      type: 'enabled',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('medium')],
   },
   {
     id: 'doubao-seed-1-6-flash-250828',
@@ -129,12 +259,13 @@ const _WELL_KNOWN_MODELS = [
     maxOutputTokens: 32000,
     stream: true,
     thinking: {
-      type: 'auto',
+      type: 'enabled',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('medium')],
   },
   {
     id: 'doubao-seed-1-6-vision-250815',
@@ -144,12 +275,13 @@ const _WELL_KNOWN_MODELS = [
     maxOutputTokens: 32000,
     stream: true,
     thinking: {
-      type: 'auto',
+      type: 'enabled',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('medium')],
   },
   {
     id: 'doubao-seed-1-6-251015',
@@ -159,12 +291,13 @@ const _WELL_KNOWN_MODELS = [
     maxOutputTokens: 32000,
     stream: true,
     thinking: {
-      type: 'auto',
+      type: 'enabled',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('medium')],
   },
   {
     id: 'doubao-seed-1-6-250615',
@@ -180,6 +313,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('auto')],
   },
   {
     id: 'doubao-seed-1-6-flash-250615',
@@ -189,12 +323,13 @@ const _WELL_KNOWN_MODELS = [
     maxOutputTokens: 32000,
     stream: true,
     thinking: {
-      type: 'auto',
+      type: 'enabled',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [doubaoReasoningEffort('medium')],
   },
   {
     id: 'doubao-1-5-pro-32k-250115',
@@ -280,6 +415,12 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      anthropicAdaptiveReasoningEffort(
+        ANTHROPIC_OPUS_4_6_REASONING_EFFORTS,
+        'xhigh',
+      ),
+    ],
   },
   {
     id: 'claude-sonnet-4-6',
@@ -305,6 +446,12 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      anthropicAdaptiveReasoningEffort(
+        ANTHROPIC_STANDARD_REASONING_EFFORTS,
+        'high',
+      ),
+    ],
   },
   {
     id: 'claude-opus-4-5',
@@ -321,6 +468,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('high')],
   },
   {
     id: 'claude-sonnet-4-5',
@@ -337,6 +485,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
   {
     id: 'claude-haiku-4-5',
@@ -345,10 +494,15 @@ const _WELL_KNOWN_MODELS = [
     maxInputTokens: 200000,
     maxOutputTokens: 64000,
     stream: true,
+    thinking: {
+      type: 'enabled',
+      budgetTokens: 1024,
+    },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('low')],
   },
   {
     id: 'claude-opus-4-1',
@@ -359,12 +513,13 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
-      budgetTokens: 10000,
+      budgetTokens: 16000,
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
   {
     id: 'claude-sonnet-4',
@@ -374,12 +529,13 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
-      budgetTokens: 10000,
+      budgetTokens: 16000,
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
   {
     id: 'claude-3-7-sonnet',
@@ -390,12 +546,13 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
-      budgetTokens: 10000,
+      budgetTokens: 16000,
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
   {
     id: 'claude-opus-4',
@@ -405,12 +562,13 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
-      budgetTokens: 10000,
+      budgetTokens: 16000,
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [anthropicBudgetReasoningEffort('medium')],
   },
   {
     id: 'claude-3-5-sonnet',
@@ -473,7 +631,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
-    presetTemplates: [reasoningEffort()],
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5.4-mini',
@@ -484,11 +644,15 @@ const _WELL_KNOWN_MODELS = [
     tokenizer: 'openai',
     thinking: {
       type: 'enabled',
+      effort: 'none',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'none'),
+    ],
   },
   {
     id: 'gpt-5.4-nano',
@@ -499,11 +663,15 @@ const _WELL_KNOWN_MODELS = [
     tokenizer: 'openai',
     thinking: {
       type: 'enabled',
+      effort: 'none',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'none'),
+    ],
   },
   {
     id: 'gpt-5.3-codex-spark',
@@ -520,6 +688,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_CODEX_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5.3-codex',
@@ -544,6 +715,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_CODEX_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5.2-codex',
@@ -560,6 +734,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_CODEX_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5.2',
@@ -576,6 +753,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5.2-pro',
@@ -592,6 +772,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_PRO_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5.2-chat-latest',
@@ -620,6 +803,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_STANDARD_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-5',
@@ -636,6 +822,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-5-mini',
@@ -646,11 +835,15 @@ const _WELL_KNOWN_MODELS = [
     tokenizer: 'openai',
     thinking: {
       type: 'enabled',
+      effort: 'medium',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'medium'),
+    ],
   },
   {
     id: 'gpt-5-nano',
@@ -661,11 +854,15 @@ const _WELL_KNOWN_MODELS = [
     tokenizer: 'openai',
     thinking: {
       type: 'enabled',
+      effort: 'medium',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'medium'),
+    ],
   },
   {
     id: 'gpt-5.1-codex',
@@ -682,6 +879,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-5.1-codex-max',
@@ -698,6 +898,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_FULL_REASONING_EFFORTS, 'xhigh'),
+    ],
   },
   {
     id: 'gpt-5-codex',
@@ -714,6 +917,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-5.1-codex-mini',
@@ -724,11 +930,15 @@ const _WELL_KNOWN_MODELS = [
     tokenizer: 'openai',
     thinking: {
       type: 'enabled',
+      effort: 'high',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_GPT_5_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-5-pro',
@@ -745,6 +955,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_HIGH_ONLY_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-5.1-chat-latest',
@@ -862,6 +1075,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_OSS_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gpt-oss-20b',
@@ -889,6 +1105,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [
+      openAiReasoningEffort(OPENAI_OSS_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'codex-mini-latest',
@@ -1231,6 +1450,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'MiniMax-M2.7-highspeed',
@@ -1246,6 +1466,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'MiniMax-M2.5',
@@ -1290,6 +1511,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'MiniMax-M2.5-highspeed',
@@ -1305,6 +1527,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'MiniMax-M2.1',
@@ -1343,6 +1566,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'MiniMax-M2.1-highspeed',
@@ -1358,6 +1582,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'MiniMax-M2',
@@ -1394,6 +1619,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'ernie-5.0',
@@ -1557,6 +1783,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'deepseek-v3.2-exp',
@@ -1573,6 +1800,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'deepseek-v3.2-speciale',
@@ -1589,6 +1817,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'deepseek-v3.1',
@@ -1606,6 +1835,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'deepseek-v3.1-terminus',
@@ -1623,6 +1853,7 @@ const _WELL_KNOWN_MODELS = [
       imageInput: false,
     },
     temperature: 1.0,
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'deepseek-v3',
@@ -1819,6 +2050,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'kimi-k2-thinking',
@@ -3093,6 +3325,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-5-turbo',
@@ -3107,6 +3340,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.7',
@@ -3140,6 +3374,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.7-flash',
@@ -3154,6 +3389,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.7-flashx',
@@ -3168,6 +3404,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.6',
@@ -3182,6 +3419,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.5',
@@ -3196,6 +3434,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.5-x',
@@ -3210,6 +3449,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.5-air',
@@ -3224,6 +3464,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.5-airx',
@@ -3238,6 +3479,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: false,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4-plus',
@@ -3333,6 +3575,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.5v',
@@ -3348,6 +3591,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.1v-thinking-flashx',
@@ -3363,6 +3607,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.6v-flash',
@@ -3378,6 +3623,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'glm-4.1v-thinking-flash',
@@ -3393,6 +3639,7 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [thinkingMode()],
   },
   {
     id: 'codegeex-4',
@@ -3570,11 +3817,15 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
+      effort: 'high',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiReasoningEffort(GEMINI_3_1_PRO_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gemini-3.1-flash-lite-preview',
@@ -3593,11 +3844,15 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
+      effort: 'high',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiReasoningEffort(GEMINI_3_FLASH_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gemini-3-pro-preview',
@@ -3608,11 +3863,15 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
+      effort: 'high',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiReasoningEffort(GEMINI_3_PRO_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gemini-3-flash-preview',
@@ -3631,11 +3890,15 @@ const _WELL_KNOWN_MODELS = [
     stream: true,
     thinking: {
       type: 'enabled',
+      effort: 'high',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiReasoningEffort(GEMINI_3_FLASH_REASONING_EFFORTS, 'high'),
+    ],
   },
   {
     id: 'gemini-2.5-pro',
@@ -3650,6 +3913,9 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiBudgetReasoningEffort(GEMINI_2_5_PRO_REASONING_BUDGETS),
+    ],
   },
   {
     id: 'gemini-2.5-flash',
@@ -3664,6 +3930,11 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiBudgetReasoningEffort(GEMINI_2_5_FLASH_REASONING_BUDGETS, {
+        includeNone: true,
+      }),
+    ],
   },
   {
     id: 'gemini-2.5-flash-lite',
@@ -3672,12 +3943,18 @@ const _WELL_KNOWN_MODELS = [
     maxOutputTokens: 65536,
     stream: true,
     thinking: {
-      type: 'auto',
+      type: 'disabled',
     },
     capabilities: {
       toolCalling: true,
       imageInput: true,
     },
+    presetTemplates: [
+      geminiBudgetReasoningEffort(GEMINI_2_5_FLASH_REASONING_BUDGETS, {
+        includeNone: true,
+        defaultEffort: 'none',
+      }),
+    ],
   },
   {
     id: 'gemini-2.0-flash',

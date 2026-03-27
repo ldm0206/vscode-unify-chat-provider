@@ -520,7 +520,60 @@ The following fields correspond to `ModelConfig` (field names used in import/exp
 
 ### Preset Template Notes
 
-TODO
+You can configure multiple preset templates for a single model. Each template corresponds to one enum option group displayed in the VS Code model selection submenu.
+
+<div align="center">
+<img src="assets/screenshot-25.png" width="600" />
+</div>
+
+You can define custom preset templates to switch model parameters quickly. For example:
+
+```json
+{
+  "presetTemplates": [
+    {
+      "name": "Reasoning Effort",
+      "id": "reasoningEffort",
+      "presets": [
+        {
+          "name": "High",
+          "description": "Suitable for tasks involving planning, coding, synthesis, or more difficult reasoning.",
+          "id": "high",
+          "config": {
+            "thinking": {
+              "type": "enabled",
+              "effort": "high"
+            },
+            "temperature": 0.7
+          }
+        },
+        {
+          "name": "Low",
+          "description": "A small amount of extra thinking can improve reliability with almost no added latency.",
+          "id": "low",
+          "config": {
+            "thinking": {
+              "type": "enabled",
+              "effort": "low"
+            },
+            "temperature": 0.4
+          }
+        },
+        {
+          "name": "Default",
+          "description": "Use the model's current configuration.",
+          "id": "default",
+          "config": {}
+        }
+      ],
+      "default": "default"
+    }
+  ]
+}
+```
+
+- `config` overrides fields in the model configuration. In the example above, `high` and `low` override `thinking` and `temperature`, while `default` overrides nothing and uses the model's current configuration.
+- If multiple templates override the same field, they are applied in declaration order, and later templates override earlier fields with the same name.
 
 </details>
 
