@@ -5,68 +5,24 @@ import type { ProviderHttpLogger } from '../../logger';
 import {
   DEFAULT_NORMAL_TIMEOUT_CONFIG,
   FetchMode,
-  buildOpencodeUserAgent,
   resolveChatNetwork,
   resolveOpenAISdkTimeoutMs,
 } from '../../utils';
 import type { ModelConfig } from '../../types';
 import { createCustomFetch, getToken } from '../utils';
 import { OpenAIResponsesProvider } from './responses-client';
-import { randomBytes } from 'crypto';
+import { randomUUID } from 'crypto';
 import type {
   ResponseCreateParamsBase,
   ResponsesClientEvent,
 } from 'openai/resources/responses/responses';
 
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses';
-const CODEX_ORIGINATOR = 'opencode';
+const CODEX_CLIENT_VERSION = '0.101.0';
+const CODEX_USER_AGENT =
+  'codex_cli_rs/0.101.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464';
+const CODEX_ORIGINATOR = 'codex_cli_rs';
 const CODEX_RESPONSES_WEBSOCKET_BETA = 'responses_websockets=2026-02-06';
-const OPENCODE_SESSION_ID_PREFIX = 'ses_';
-const OPENCODE_SESSION_ID_RANDOM_LENGTH = 14;
-
-let lastOpencodeSessionTimestamp = 0;
-let opencodeSessionCounter = 0;
-
-function randomBase62(length: number): string {
-  const chars =
-    '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  const bytes = randomBytes(length);
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars[bytes[i] % 62];
-  }
-  return result;
-}
-
-function createOpencodeSessionId(): string {
-  const currentTimestamp = Date.now();
-  if (currentTimestamp !== lastOpencodeSessionTimestamp) {
-    lastOpencodeSessionTimestamp = currentTimestamp;
-    opencodeSessionCounter = 0;
-  }
-  opencodeSessionCounter += 1;
-
-  const now =
-    BigInt(currentTimestamp) * BigInt(0x1000) + BigInt(opencodeSessionCounter);
-
-  const timeBytes = Buffer.alloc(6);
-  for (let i = 0; i < 6; i++) {
-    timeBytes[i] = Number((now >> BigInt(40 - 8 * i)) & BigInt(0xff));
-  }
-
-  return `${OPENCODE_SESSION_ID_PREFIX}${timeBytes.toString('hex')}${randomBase62(
-    OPENCODE_SESSION_ID_RANDOM_LENGTH,
-  )}`;
-}
-
-function buildOpencodeVersion(userAgent = buildOpencodeUserAgent()): string {
-  const [identifier] = userAgent.split(' ', 1);
-  const slashIndex = identifier.indexOf('/');
-  if (slashIndex === -1) {
-    return identifier;
-  }
-  return identifier.slice(slashIndex + 1);
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -156,6 +112,23 @@ function sanitizeCodexHeaders(headersInit: HeadersInit | undefined): Headers {
   return headers;
 }
 
+function readStringHeader(
+  headers: Record<string, string>,
+  name: string,
+): string | undefined {
+  return getHeaderValue(headers, name);
+}
+
+function setHeaderIfMissing(
+  headers: Record<string, string>,
+  name: string,
+  value: string,
+): void {
+  if (readStringHeader(headers, name) === undefined) {
+    headers[name] = value;
+  }
+}
+
 export class OpenAICodexProvider extends OpenAIResponsesProvider {
   protected override getInputMessageRole(
     role: vscode.LanguageModelChatMessageRole,
@@ -173,9 +146,9 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
     _messages?: readonly vscode.LanguageModelChatRequestMessage[],
   ): Record<string, string> {
     const headers = super.buildHeaders(sessionId, credential, modelConfig);
-    const userAgent = buildOpencodeUserAgent();
 
     deleteHeaderVariants(headers, 'accept');
+    deleteHeaderVariants(headers, 'connection');
     deleteHeaderVariants(headers, 'user-agent');
     deleteHeaderVariants(headers, 'originator');
     deleteHeaderVariants(headers, 'session_id');
@@ -183,18 +156,18 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
     deleteHeaderVariants(headers, 'version');
     deleteHeaderVariants(headers, 'chatgpt-account-id');
 
-    headers['Accept'] = '*/*';
-    headers['User-Agent'] = userAgent;
-    headers['Originator'] = CODEX_ORIGINATOR;
+    headers['User-Agent'] = CODEX_USER_AGENT;
     headers['Session_id'] = sessionId;
-    headers['Conversation_id'] = sessionId;
-    headers['Version'] = buildOpencodeVersion(userAgent);
+    headers['Version'] = CODEX_CLIENT_VERSION;
+    headers['Connection'] = 'Keep-Alive';
 
     const auth = this.config.auth;
     if (auth?.method === 'openai-codex') {
+      headers['Originator'] = CODEX_ORIGINATOR;
+
       const accountId = auth.accountId?.trim();
       if (accountId) {
-        headers['ChatGPT-Account-Id'] = accountId;
+        headers['Chatgpt-Account-Id'] = accountId;
       }
     }
 
@@ -213,8 +186,12 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
       modelConfig,
       messages,
     );
-    const existingBeta =
-      headers['OpenAI-Beta'] ?? headers['openai-beta'] ?? undefined;
+    setHeaderIfMissing(headers, 'x-codex-beta-features', '');
+    setHeaderIfMissing(headers, 'x-codex-turn-state', '');
+    setHeaderIfMissing(headers, 'x-codex-turn-metadata', '');
+    setHeaderIfMissing(headers, 'x-responsesapi-include-timing-metrics', '');
+
+    const existingBeta = readStringHeader(headers, 'openai-beta');
 
     deleteHeaderVariants(headers, 'openai-beta');
     headers['OpenAI-Beta'] =
@@ -226,7 +203,7 @@ export class OpenAICodexProvider extends OpenAIResponsesProvider {
   }
 
   protected generateSessionId(): string {
-    return createOpencodeSessionId();
+    return randomUUID();
   }
 
   protected override resolveWebSocketBaseUrl(client: OpenAI): string {
