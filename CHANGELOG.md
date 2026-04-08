@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.11.2 - 2026-04-08
+
+### Features
+- add support for KAT-Coder-Pro V2 and GLM-5.1 models in well-known models and providers (3633449, SmallMain)
+
+### Fixes
+- some issues with non-standard implementations in certain upstream components (489fe09, SmallMain)
+
 ## v5.11.1 - 2026-03-27
 
 ### Fixes
