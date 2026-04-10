@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.0.1 - 2026-04-10
+
+### Fixes
+- remove irrelevant comment from code-assist-client.ts (0bf5b73, SmallMain)
+- 修复因工具参数 JSON Schema里混入了enumDescriptions等字段导致Antigravity所以直接拒绝请求。 (d951e96, Half-A-Turnip)
+
 ## v6.0.0 - 2026-04-09
 
 ### Breaking Changes
