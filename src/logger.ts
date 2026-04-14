@@ -136,6 +136,14 @@ function stringifyForLog(value: unknown): string {
   }
 }
 
+function formatLogData(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return stringifyForLog(value);
+}
+
 export interface ProviderHttpLogger {
   providerRequest(details: {
     endpoint: string;
@@ -618,6 +626,60 @@ export class SimpleHttpLogger implements ProviderHttpLogger {
   }
 }
 
+export class CommitMessageLogger {
+  private static nextCommitMessageLogId = 1;
+  private readonly ch = getChannel();
+  public readonly id: string;
+
+  constructor() {
+    this.id = `commit-${CommitMessageLogger.nextCommitMessageLogId++}`;
+  }
+
+  private get prefix(): string {
+    return `[${this.id}] [CommitMessage]`;
+  }
+
+  info(message: string, data?: unknown): void {
+    if (data !== undefined) {
+      this.ch.info(`${this.prefix} ${message}:\n${formatLogData(data)}`);
+      return;
+    }
+
+    this.ch.info(`${this.prefix} ${message}`);
+  }
+
+  verbose(message: string, data?: unknown): void {
+    if (!isVerboseEnabled()) {
+      return;
+    }
+
+    if (data !== undefined) {
+      this.ch.info(`${this.prefix} ${message}:\n${formatLogData(data)}`);
+      return;
+    }
+
+    this.ch.info(`${this.prefix} ${message}`);
+  }
+
+  warn(message: string, data?: unknown): void {
+    if (data !== undefined) {
+      this.ch.warn(`${this.prefix} ${message}:\n${formatLogData(data)}`);
+      return;
+    }
+
+    this.ch.warn(`${this.prefix} ${message}`);
+  }
+
+  error(message: string, data?: unknown): void {
+    if (data !== undefined) {
+      this.ch.error(`${this.prefix} ${message}:\n${formatLogData(data)}`);
+      return;
+    }
+
+    this.ch.error(`${this.prefix} ${message}`);
+  }
+}
+
 /**
  * Create a new RequestLogger with a unique request ID.
  */
@@ -633,6 +695,10 @@ export function createSimpleHttpLogger(context: {
 }): SimpleHttpLogger {
   const id = `http-${nextHttpLogId++}`;
   return new SimpleHttpLogger(id, context);
+}
+
+export function createCommitMessageLogger(): CommitMessageLogger {
+  return new CommitMessageLogger();
 }
 
 /**
