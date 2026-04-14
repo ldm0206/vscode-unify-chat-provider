@@ -488,106 +488,119 @@ export class UnifyChatService implements vscode.LanguageModelChatProvider {
       const client = this.getClient(resolvedProvider);
       const chatNetwork = resolveChatNetwork(resolvedProvider);
       const retryConfig = chatNetwork.retry;
+      const retryAbortController = new AbortController();
+      const retryCancellationListener = token.onCancellationRequested(() => {
+        retryAbortController.abort();
+      });
+      if (token.isCancellationRequested) {
+        retryAbortController.abort();
+      }
 
-      let emptyStreamAttempt = 0;
+      try {
+        let emptyStreamAttempt = 0;
 
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (emptyStreamAttempt > 0) {
-          // Reset performance trace for retry
-          performanceTrace.tts = Date.now();
-          performanceTrace.ttf = 0;
-          performanceTrace.ttft = 0;
-          performanceTrace.tps = 0;
-          performanceTrace.tl = 0;
-        }
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          if (emptyStreamAttempt > 0) {
+            // Reset performance trace for retry
+            performanceTrace.tts = Date.now();
+            performanceTrace.ttf = 0;
+            performanceTrace.ttft = 0;
+            performanceTrace.tps = 0;
+            performanceTrace.tl = 0;
+          }
 
-        let partCount = 0;
+          let partCount = 0;
 
-        // Stream the response
-        const stream = client.streamChat(
-          model.id,
-          resolvedRequestModel,
-          messages,
-          options,
-          performanceTrace,
-          token,
-          logger,
-          credential,
-        );
+          // Stream the response
+          const stream = client.streamChat(
+            model.id,
+            resolvedRequestModel,
+            messages,
+            options,
+            performanceTrace,
+            token,
+            logger,
+            credential,
+          );
 
-        try {
-          for await (const part of stream) {
+          try {
+            for await (const part of stream) {
+              if (token.isCancellationRequested) {
+                outcome = 'cancelled';
+                break;
+              }
+              partCount++;
+              // Log VSCode output (verbose only)
+              logger.vscodeOutput(part);
+              if (this.configStore.fix001ContextIndicatorDisplay) {
+                reportProgressWithContextWindowRequest(
+                  logger.requestId,
+                  progress,
+                  part,
+                );
+              } else {
+                progress.report(part);
+              }
+            }
+          } catch (error) {
+            if (token.isCancellationRequested && isAbortLikeError(error)) {
+              // User cancelled the request; treat provider abort errors as expected.
+              outcome = 'cancelled';
+            } else {
+              outcome = 'error';
+              const normalizedError = resolveMeaningfulError(error);
+              // sometimes, the chat panel in VSCode does not display the specific error,
+              // but instead shows the output from `stackTrace.format`.
+              logger.error(normalizedError);
+              throw normalizedError;
+            }
+          }
+
+          // If the stream produced any parts or was cancelled, we're done
+          if (partCount > 0 || token.isCancellationRequested) {
             if (token.isCancellationRequested) {
               outcome = 'cancelled';
-              break;
             }
-            partCount++;
-            // Log VSCode output (verbose only)
-            logger.vscodeOutput(part);
-            if (this.configStore.fix001ContextIndicatorDisplay) {
-              reportProgressWithContextWindowRequest(
-                logger.requestId,
-                progress,
-                part,
-              );
-            } else {
-              progress.report(part);
-            }
+            break;
           }
-        } catch (error) {
-          if (token.isCancellationRequested && isAbortLikeError(error)) {
-            // User cancelled the request; treat provider abort errors as expected.
-            outcome = 'cancelled';
-          } else {
-            outcome = 'error';
-            const normalizedError = resolveMeaningfulError(error);
-            // sometimes, the chat panel in VSCode does not display the specific error,
-            // but instead shows the output from `stackTrace.format`.
-            logger.error(normalizedError);
-            throw normalizedError;
+
+          // 0-part responses are valid for some providers. In particular,
+          // Anthropic Messages may legitimately return usage-only streams
+          // (e.g. `message_start` + `message_delta` with only usage /
+          // stop_reason + `message_stop`) where the final message has an empty
+          // content array. Copilot Chat interprets a visibly empty assistant
+          // response as an error, so the Anthropic client suppresses all
+          // parts in this scenario. We must treat those 0-part responses as
+          // successful no-op completions and not retry.
+          if (resolvedProvider.type === 'anthropic') {
+            break;
           }
-        }
 
-        // If the stream produced any parts or was cancelled, we're done
-        if (partCount > 0 || token.isCancellationRequested) {
-          if (token.isCancellationRequested) {
-            outcome = 'cancelled';
+          // Empty stream (200 OK but no data) — treat as transient and retry
+          if (emptyStreamAttempt >= retryConfig.maxRetries) {
+            break;
           }
-          break;
-        }
 
-        // 0-part responses are valid for some providers. In particular,
-        // Anthropic Messages may legitimately return usage-only streams
-        // (e.g. `message_start` + `message_delta` with only usage /
-        // stop_reason + `message_stop`) where the final message has an empty
-        // content array. Copilot Chat interprets a visibly empty assistant
-        // response as an error, so the Anthropic client suppresses all
-        // parts in this scenario. We must treat those 0-part responses as
-        // successful no-op completions and not retry.
-        if (resolvedProvider.type === 'anthropic') {
-          break;
+          const delayMs = calculateBackoffDelay(emptyStreamAttempt, retryConfig);
+          logger.emptyStreamRetry(
+            emptyStreamAttempt + 1,
+            retryConfig.maxRetries,
+            delayMs,
+          );
+          await delay(delayMs, retryAbortController.signal);
+          emptyStreamAttempt++;
         }
-
-        // Empty stream (200 OK but no data) — treat as transient and retry
-        if (emptyStreamAttempt >= retryConfig.maxRetries) {
-          break;
-        }
-
-        const delayMs = calculateBackoffDelay(emptyStreamAttempt, retryConfig);
-        logger.emptyStreamRetry(
-          emptyStreamAttempt + 1,
-          retryConfig.maxRetries,
-          delayMs,
-        );
-        await delay(delayMs);
-        emptyStreamAttempt++;
+      } finally {
+        retryCancellationListener.dispose();
       }
 
       performanceTrace.tl = Date.now() - performanceTrace.tts;
       logger.complete(performanceTrace);
     } catch (error) {
-      if (outcome !== 'cancelled') {
+      if (token.isCancellationRequested && isAbortLikeError(error)) {
+        outcome = 'cancelled';
+      } else if (outcome !== 'cancelled') {
         outcome = 'error';
       }
       throw error;
