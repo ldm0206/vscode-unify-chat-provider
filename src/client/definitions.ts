@@ -149,6 +149,12 @@ export enum FeatureId {
    */
   AnthropicInterleavedThinking = 'anthropic_interleaved-thinking',
   /**
+   * The `xhigh` effort level is currently documented for Claude Opus 4.7.
+   *
+   * @see https://platform.claude.com/docs/en/build-with-claude/effort
+   */
+  AnthropicXHighEffort = 'anthropic_xhigh-effort',
+  /**
    * @see https://docs.anthropic.com/en/docs/build-with-claude/tool-use/web-search-tool
    */
   AnthropicWebSearch = 'anthropic_web-search',
@@ -312,6 +318,12 @@ export const FEATURES: Record<FeatureId, Feature> = {
   },
   [FeatureId.AnthropicInterleavedThinking]: {
     supportedFamilys: [
+      'claude-opus-4-7',
+      'claude-opus-4.7',
+      'claude-opus-4-6',
+      'claude-opus-4.6',
+      'claude-sonnet-4-6',
+      'claude-sonnet-4.6',
       'claude-sonnet-4-5',
       'claude-sonnet-4.5',
       'claude-sonnet-4',
@@ -321,6 +333,9 @@ export const FEATURES: Record<FeatureId, Feature> = {
       'claude-opus-4.1',
       'claude-opus-4',
     ],
+  },
+  [FeatureId.AnthropicXHighEffort]: {
+    supportedFamilys: ['claude-opus-4-7', 'claude-opus-4.7'],
   },
   [FeatureId.AnthropicWebSearch]: {
     supportedFamilys: [

@@ -12,6 +12,7 @@ type BudgetReasoningEffort = Extract<ThinkingEffort, 'high' | 'medium' | 'low'>;
 const DEFAULT_PRESET_ID = 'default';
 
 const REASONING_EFFORT_ORDER: readonly ThinkingEffort[] = [
+  'max',
   'xhigh',
   'high',
   'medium',
@@ -31,9 +32,13 @@ const SERVICE_TIER_ORDER: readonly ServiceTier[] = [
 ];
 
 const REASONING_EFFORT_PRESET_METADATA = {
+  max: {
+    name: t('Max'),
+    description: t('Maximum depth of inference'),
+  },
   xhigh: {
     name: t('Extra High'),
-    description: t('Maximum depth of inference'),
+    description: t('Extra high depth of inference'),
   },
   high: {
     name: t('High'),

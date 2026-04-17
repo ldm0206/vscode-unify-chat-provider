@@ -14,6 +14,7 @@ export interface ContextCacheConfig {
 
 export type ServiceTier = 'auto' | 'standard' | 'flex' | 'scale' | 'priority';
 export type ThinkingEffort =
+  | 'max'
   | 'none'
   | 'minimal'
   | 'low'
@@ -147,10 +148,10 @@ export interface ModelConfig {
      */
     effort?: ThinkingEffort;
     /**
-     * Reasoning summary level for Responses-style APIs.
+     * Reasoning / thinking summary level.
      * Leave undefined to let the provider decide.
      */
-    summary?: 'auto' | 'concise' | 'detailed';
+    summary?: 'none' | 'auto' | 'concise' | 'detailed';
   };
   /**
    * Use native web search tool.

@@ -721,9 +721,12 @@ export class OpenAIResponsesProvider implements ApiProvider {
         };
       } else {
         const reasoning: NonNullable<ResponseCreateParamsBase['reasoning']> = {
-          effort: thinking.effort ?? 'medium',
+          effort: this.normalizeReasoningEffortForOpenAi(thinking.effort),
         };
-        if (thinking.summary !== undefined) {
+        if (
+          thinking.summary !== undefined &&
+          thinking.summary !== 'none'
+        ) {
           reasoning.summary = thinking.summary;
         }
         return {
@@ -739,9 +742,12 @@ export class OpenAIResponsesProvider implements ApiProvider {
         };
       } else {
         const reasoning: NonNullable<ResponseCreateParamsBase['reasoning']> = {
-          effort: thinking.effort ?? 'medium',
+          effort: this.normalizeReasoningEffortForOpenAi(thinking.effort),
         };
-        if (thinking.summary !== undefined) {
+        if (
+          thinking.summary !== undefined &&
+          thinking.summary !== 'none'
+        ) {
           reasoning.summary = thinking.summary;
         }
         return {
@@ -750,6 +756,17 @@ export class OpenAIResponsesProvider implements ApiProvider {
         };
       }
     }
+  }
+
+  private normalizeReasoningEffortForOpenAi(
+    effort:
+      | NonNullable<NonNullable<ModelConfig['thinking']>['effort']>
+      | undefined,
+  ): 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' {
+    if (effort === undefined) {
+      return 'medium';
+    }
+    return effort === 'max' ? 'xhigh' : effort;
   }
 
   private resolveExplicitContextCacheTtlSeconds(): number | undefined {

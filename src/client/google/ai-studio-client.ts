@@ -258,6 +258,7 @@ export class GoogleAIStudioProvider implements ApiProvider {
       case 'medium':
         return ThinkingLevel.MEDIUM;
       case 'high':
+      case 'max':
       case 'xhigh':
         return ThinkingLevel.HIGH;
       case 'none':

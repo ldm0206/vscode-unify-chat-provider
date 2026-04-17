@@ -428,6 +428,7 @@ export class OllamaProvider implements ApiProvider {
       case 'medium':
         return { think: 'medium' };
       case 'high':
+      case 'max':
       case 'xhigh':
         return { think: 'high' };
       default:

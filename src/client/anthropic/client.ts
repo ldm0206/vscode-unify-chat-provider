@@ -68,6 +68,7 @@ import type { AuthTokenInfo } from '../../auth/types';
 // TODO Citations support
 // TODO Context editing support
 type AnthropicThinkingContentType = 'content' | 'encrypted';
+type AnthropicThinkingDisplay = 'summarized' | 'omitted';
 
 type AnthropicThinkingOutputState = {
   lastType?: AnthropicThinkingContentType;
@@ -177,6 +178,26 @@ export class AnthropicProvider implements ApiProvider {
     },
   ): Omit<MessageCreateParamsStreaming, 'stream'> {
     return requestBase;
+  }
+
+  private resolveThinkingDisplay(
+    model: ModelConfig,
+    thinkingEnabled: boolean,
+  ): AnthropicThinkingDisplay | undefined {
+    if (!thinkingEnabled) {
+      return undefined;
+    }
+
+    switch (model.thinking?.summary) {
+      case 'none':
+        return 'omitted';
+      case 'auto':
+      case 'concise':
+      case 'detailed':
+        return 'summarized';
+      default:
+        return undefined;
+    }
   }
 
   /**
@@ -717,6 +738,7 @@ export class AnthropicProvider implements ApiProvider {
     const thinkingType = model.thinking?.type;
     const thinkingEnabled =
       thinkingType === 'enabled' || thinkingType === 'auto';
+    const thinkingDisplay = this.resolveThinkingDisplay(model, thinkingEnabled);
     const hasTools = (options.tools && options.tools.length > 0) ?? false;
     const stream = model.stream ?? true;
 
@@ -839,8 +861,8 @@ export class AnthropicProvider implements ApiProvider {
         requestBase.top_p = model.topP;
       }
       if (model.thinking !== undefined) {
-        const { type, budgetTokens, effort } = model.thinking;
-        if (type === 'enabled') {
+        const { budgetTokens, effort } = model.thinking;
+        if (thinkingType === 'enabled') {
           // With interleaved thinking, budget_tokens can exceed max_tokens
           // For regular thinking, it must be less than max_tokens
           requestBase.thinking = {
@@ -850,10 +872,12 @@ export class AnthropicProvider implements ApiProvider {
               requestBase.max_tokens,
               anthropicInterleavedThinkingEnabled,
             ),
+            ...(thinkingDisplay ? { display: thinkingDisplay } : {}),
           };
-        } else if (type === 'auto') {
+        } else if (thinkingType === 'auto') {
           requestBase.thinking = {
             type: 'adaptive',
+            ...(thinkingDisplay ? { display: thinkingDisplay } : {}),
           };
           if (effort) {
             requestBase.output_config ??= {};
@@ -862,7 +886,17 @@ export class AnthropicProvider implements ApiProvider {
                 type: 'disabled',
               };
             } else if (effort === 'xhigh') {
-              requestBase.output_config.effort = 'max';
+              if (
+                isFeatureSupported(
+                  FeatureId.AnthropicXHighEffort,
+                  this.config,
+                  model,
+                )
+              ) {
+                requestBase.output_config.effort = 'xhigh';
+              } else {
+                requestBase.output_config.effort = 'max';
+              }
             } else if (effort === 'minimal') {
               requestBase.output_config.effort = 'low';
             } else {

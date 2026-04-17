@@ -593,7 +593,11 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
           };
         }
         if (thinking.effort !== undefined)
-          return { reasoning: { effort: thinking.effort } };
+          return {
+            reasoning: {
+              effort: this.normalizeReasoningEffortForOpenAi(thinking.effort),
+            },
+          };
         return { reasoning: { enabled: true } };
       }
 
@@ -666,17 +670,32 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
         if (thinking.budgetTokens !== undefined)
           return { reasoning_effort: 'medium' };
         if (thinking.effort !== undefined)
-          return { reasoning_effort: thinking.effort };
+          return {
+            reasoning_effort: this.normalizeReasoningEffortForOpenAi(
+              thinking.effort,
+            ),
+          };
         return {};
       }
     }
+  }
+
+  private normalizeReasoningEffortForOpenAi(
+    effort: NonNullable<NonNullable<ModelConfig['thinking']>['effort']>,
+  ): 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' {
+    return effort === 'max' ? 'xhigh' : effort;
   }
 
   private buildThinkingStrategyParam(
     model: ModelConfig,
   ): Partial<ChatCompletionCreateParamsBase> {
     const summary = model.thinking?.summary;
-    if (!summary || summary === 'auto' || model.thinking?.type === 'disabled') {
+    if (
+      !summary ||
+      summary === 'none' ||
+      summary === 'auto' ||
+      model.thinking?.type === 'disabled'
+    ) {
       return {};
     }
     return {
@@ -687,12 +706,7 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
 
   private normalizeReasoningEffortForThinking(
     effort:
-      | 'none'
-      | 'minimal'
-      | 'low'
-      | 'medium'
-      | 'high'
-      | 'xhigh'
+      | NonNullable<NonNullable<ModelConfig['thinking']>['effort']>
       | undefined,
   ): 'minimal' | 'low' | 'medium' | 'high' {
     switch (effort) {
@@ -702,6 +716,7 @@ export class OpenAIChatCompletionProvider implements ApiProvider {
       case 'low':
         return 'low';
       case 'high':
+      case 'max':
       case 'xhigh':
         return 'high';
       case 'medium':

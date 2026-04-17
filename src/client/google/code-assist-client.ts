@@ -931,6 +931,7 @@ function mapThinkingEffortToGemini3ThinkingLevel(
     case 'medium':
       return 'medium';
     case 'high':
+    case 'max':
     case 'xhigh':
       return 'high';
     case 'none':
@@ -951,6 +952,7 @@ function resolveClaudeOpusThinkingBudgetForAntigravity(
     case 'medium':
       return CLAUDE_OPUS_LOW_THINKING_BUDGET_ANTIGRAVITY;
     case 'high':
+    case 'max':
     case 'xhigh':
       return CLAUDE_OPUS_HIGH_THINKING_BUDGET_ANTIGRAVITY;
     case undefined:

@@ -39,6 +39,42 @@ type EditToolQuickPickItem = vscode.QuickPickItem & {
   editTool: ModelEditTool | undefined;
 };
 
+function getThinkingEffortLabel(
+  effort: NonNullable<NonNullable<ModelConfig['thinking']>['effort']>,
+): string {
+  switch (effort) {
+    case 'none':
+      return t('None');
+    case 'minimal':
+      return t('Minimal');
+    case 'low':
+      return t('Low');
+    case 'medium':
+      return t('Medium');
+    case 'high':
+      return t('High');
+    case 'xhigh':
+      return t('Extra High');
+    case 'max':
+      return t('Max');
+  }
+}
+
+function getThinkingSummaryLabel(
+  summary: NonNullable<NonNullable<ModelConfig['thinking']>['summary']>,
+): string {
+  switch (summary) {
+    case 'none':
+      return t('None');
+    case 'auto':
+      return t('Auto');
+    case 'concise':
+      return t('Concise');
+    case 'detailed':
+      return t('Detailed');
+  }
+}
+
 async function pickModelEditTool(
   currentEditTool: ModelEditTool | undefined,
 ): Promise<EditToolQuickPickItem | undefined> {
@@ -455,12 +491,7 @@ export const modelFormSchema: FormSchema<ModelConfig> = {
           const effort = await pickQuickItem<
             vscode.QuickPickItem & {
               value:
-                | 'none'
-                | 'minimal'
-                | 'low'
-                | 'medium'
-                | 'high'
-                | 'xhigh'
+                | NonNullable<NonNullable<ModelConfig['thinking']>['effort']>
                 | undefined;
             }
           >({
@@ -503,12 +534,17 @@ export const modelFormSchema: FormSchema<ModelConfig> = {
                 value: 'xhigh',
                 picked: draft.thinking?.effort === 'xhigh',
               },
+              {
+                label: t('Max'),
+                value: 'max',
+                picked: draft.thinking?.effort === 'max',
+              },
             ],
           });
 
           const summary = await pickQuickItem<
             vscode.QuickPickItem & {
-              value: 'auto' | 'concise' | 'detailed' | undefined;
+              value: 'none' | 'auto' | 'concise' | 'detailed' | undefined;
             }
           >({
             title: t('Reasoning Summary'),
@@ -519,6 +555,11 @@ export const modelFormSchema: FormSchema<ModelConfig> = {
                 description: t('Let the provider decide'),
                 value: undefined,
                 picked: draft.thinking?.summary === undefined,
+              },
+              {
+                label: t('None'),
+                value: 'none',
+                picked: draft.thinking?.summary === 'none',
               },
               {
                 label: t('Auto'),
@@ -556,10 +597,14 @@ export const modelFormSchema: FormSchema<ModelConfig> = {
           details.push(t('{0} tokens', draft.thinking.budgetTokens));
         }
         if (draft.thinking.effort) {
-          details.push(t('{0} effort', draft.thinking.effort));
+          details.push(
+            t('{0} effort', getThinkingEffortLabel(draft.thinking.effort)),
+          );
         }
         if (draft.thinking.summary) {
-          details.push(t('{0} summary', draft.thinking.summary));
+          details.push(
+            t('{0} summary', getThinkingSummaryLabel(draft.thinking.summary)),
+          );
         }
         return `${typeLabel}${
           details.length > 0 ? ` (${details.join(', ')})` : ''

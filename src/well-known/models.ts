@@ -38,6 +38,13 @@ const OPENAI_CODEX_REASONING_EFFORTS = [
   'low',
 ] as const;
 const OPENAI_OSS_REASONING_EFFORTS = ['high', 'medium', 'low'] as const;
+const ANTHROPIC_OPUS_4_7_REASONING_EFFORTS = [
+  'max',
+  'xhigh',
+  'high',
+  'medium',
+  'low',
+] as const;
 const ANTHROPIC_OPUS_4_6_REASONING_EFFORTS = [
   'xhigh',
   'high',
@@ -419,6 +426,29 @@ const _WELL_KNOWN_MODELS = [
       toolCalling: false,
       imageInput: false,
     },
+  },
+  {
+    id: 'claude-opus-4-7',
+    overrides: ['claude-opus-4.7', 'claude-opus-4-7-thinking'],
+    name: 'Claude Opus 4.7',
+    maxInputTokens: 1000000,
+    maxOutputTokens: 128000,
+    stream: true,
+    thinking: {
+      type: 'auto',
+      effort: 'max',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+      editTools: 'multi-find-replace',
+    },
+    presetTemplates: [
+      anthropicAdaptiveReasoningEffort(
+        ANTHROPIC_OPUS_4_7_REASONING_EFFORTS,
+        'max',
+      ),
+    ],
   },
   {
     id: 'claude-opus-4-6',
@@ -2268,6 +2298,20 @@ const _WELL_KNOWN_MODELS = [
     name: 'Qwen3.5-Flash',
     maxInputTokens: 1000000,
     maxOutputTokens: 65536,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
+    id: 'qwen3.6-35b-a3b',
+    name: 'Qwen3.6-35B-A3B',
+    maxInputTokens: 262144,
+    maxOutputTokens: 64000,
     stream: true,
     thinking: {
       type: 'enabled',
