@@ -174,6 +174,25 @@ function isResponseImageGenerationTool(
   return tool.type === 'image_generation';
 }
 
+function normalizeMarkerOutputItem(item: ResponseOutputItem): ResponseInputItem {
+  switch (item.type) {
+    case 'computer_call_output':
+      return {
+        ...item,
+        status: item.status === 'failed' ? 'incomplete' : item.status,
+      };
+
+    default:
+      return item;
+  }
+}
+
+function normalizeMarkerOutputItems(
+  items: readonly ResponseOutputItem[],
+): ResponseInputItem[] {
+  return items.map((item) => normalizeMarkerOutputItem(item));
+}
+
 function readStringField(
   record: Record<string, unknown>,
   key: string,
@@ -475,7 +494,7 @@ export class OpenAIResponsesProvider implements ApiProvider {
     for (const [param, raw] of rawMap) {
       const index = outItems.indexOf(param);
       if (index === -1) continue;
-      outItems.splice(index, 1, ...raw);
+      outItems.splice(index, 1, ...normalizeMarkerOutputItems(raw));
     }
 
     const result: ConvertedMessagesResult = {
