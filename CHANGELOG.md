@@ -1,5 +1,13 @@
 # Changelog
 
+## v6.2.0 - 2026-04-17
+
+### Features
+- add max thinking effort level and think display and Claude Opus 4.7 / Qwen3.6 small model support (3e0b5e4, SmallMain)
+
+### Fixes
+- normalize computer_call_output status for marker compatibility (55917a9, SmallMain)
+
 ## v6.1.1 - 2026-04-14
 
 ### Refactors
