@@ -10,6 +10,8 @@ import type {
   TimeoutConfig,
 } from './types';
 import * as vscode from 'vscode';
+import { fetch as undiciFetch } from 'undici';
+import type { Dispatcher } from 'undici';
 import { t } from './i18n';
 
 /**
@@ -704,7 +706,165 @@ export async function fetchWithRetry(
   input: RequestInfo | URL,
   options: FetchWithRetryOptions = {},
 ): Promise<Response> {
-  return fetchWithRetryUsingFetch(fetch, input, options);
+  return fetchWithRetryUsingFetch(fetchWithUndici, input, options);
+}
+
+type RequestInitWithDispatcher = RequestInit & { dispatcher?: Dispatcher };
+
+type UndiciFetchInit = Parameters<typeof undiciFetch>[1];
+type UndiciFetchResponse = Awaited<ReturnType<typeof undiciFetch>>;
+
+function supportsUndiciRequestBody(
+  body: RequestInit['body'] | null | undefined,
+): boolean {
+  return (
+    body == null ||
+    typeof body === 'string' ||
+    isUrlSearchParams(body) ||
+    isUint8Array(body) ||
+    isArrayBuffer(body) ||
+    ArrayBuffer.isView(body)
+  );
+}
+
+function toUndiciRequestBody(
+  body: RequestInit['body'] | null | undefined,
+): NonNullable<UndiciFetchInit>['body'] | undefined {
+  if (body == null) {
+    return undefined;
+  }
+
+  if (
+    typeof body === 'string' ||
+    isUrlSearchParams(body) ||
+    isUint8Array(body) ||
+    isArrayBuffer(body)
+  ) {
+    return body;
+  }
+
+  if (ArrayBuffer.isView(body)) {
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  }
+
+  return undefined;
+}
+
+function toUndiciRequestInit(
+  init?: RequestInitWithDispatcher,
+): UndiciFetchInit | undefined {
+  if (!init) {
+    return undefined;
+  }
+
+  const next: NonNullable<UndiciFetchInit> = {};
+
+  if (init.body !== undefined && init.body !== null) {
+    next.body = toUndiciRequestBody(init.body);
+  }
+  if (init.cache !== undefined) {
+    next.cache = init.cache;
+  }
+  if (init.credentials !== undefined) {
+    next.credentials = init.credentials;
+  }
+  if (init.dispatcher !== undefined) {
+    next.dispatcher = init.dispatcher;
+  }
+  if (init.headers !== undefined) {
+    next.headers = headersInitToRecord(init.headers);
+  }
+  if (init.integrity !== undefined) {
+    next.integrity = init.integrity;
+  }
+  if (init.keepalive !== undefined) {
+    next.keepalive = init.keepalive;
+  }
+  if (init.method !== undefined) {
+    next.method = init.method;
+  }
+  if (init.mode !== undefined) {
+    next.mode = init.mode;
+  }
+  if (init.redirect !== undefined) {
+    next.redirect = init.redirect;
+  }
+  if (init.referrer !== undefined) {
+    next.referrer = init.referrer;
+  }
+  if (init.referrerPolicy !== undefined) {
+    next.referrerPolicy = init.referrerPolicy;
+  }
+  if (init.signal !== undefined) {
+    next.signal = init.signal;
+  }
+
+  return next;
+}
+
+function createWebReadableStream(
+  body: NonNullable<UndiciFetchResponse['body']>,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+
+      if (value instanceof Uint8Array) {
+        controller.enqueue(value);
+        return;
+      }
+
+      controller.enqueue(new Uint8Array(value));
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
+}
+
+function adaptUndiciResponse(response: UndiciFetchResponse): Response {
+  const headers = new Headers();
+  response.headers.forEach((value, key) => {
+    headers.append(key, value);
+  });
+
+  const body =
+    response.body === null ? null : createWebReadableStream(response.body);
+
+  return new Response(body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+function fetchWithUndici(
+  input: RequestInfo | URL,
+  init?: RequestInitWithDispatcher,
+): Promise<Response> {
+  if (
+    typeof Request !== 'undefined' &&
+    input instanceof Request
+  ) {
+    return fetch(input, init);
+  }
+
+  if (
+    (typeof input !== 'string' && !(input instanceof URL)) ||
+    !supportsUndiciRequestBody(init?.body)
+  ) {
+    return fetch(input, init);
+  }
+
+  return undiciFetch(input, toUndiciRequestInit(init)).then(
+    adaptUndiciResponse,
+  );
 }
 
 export async function fetchWithRetryUsingFetch(
