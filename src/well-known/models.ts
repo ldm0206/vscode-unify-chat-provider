@@ -2289,6 +2289,20 @@ const _WELL_KNOWN_MODELS = [
     temperature: 0.6,
   },
   {
+    id: 'qwen3.6-max-preview',
+    name: 'Qwen3.6-Max-Preview',
+    maxInputTokens: 256000,
+    maxOutputTokens: 64000,
+    stream: true,
+    thinking: {
+      type: 'enabled',
+    },
+    capabilities: {
+      toolCalling: true,
+      imageInput: true,
+    },
+  },
+  {
     id: 'qwen3.6-plus',
     name: 'Qwen3.6-Plus',
     maxInputTokens: 1000000,
@@ -2305,7 +2319,7 @@ const _WELL_KNOWN_MODELS = [
   {
     id: 'qwen3.6-flash',
     name: 'Qwen3.6-Flash',
-    maxInputTokens: 262144,
+    maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     stream: true,
     thinking: {
